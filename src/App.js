@@ -67,6 +67,11 @@ function App() {
   const [newMaterialItemId, setNewMaterialItemId] = useState("");
   const [newMaterialQty, setNewMaterialQty] = useState("");
 
+  const [editingItemId, setEditingItemId] = useState(null);
+  const [editedItemName, setEditedItemName] = useState("");
+  const [editingTaskId, setEditingTaskId] = useState(null);
+  const [editedTaskName, setEditedTaskName] = useState("");
+
   const usedAcrossProjects = calculateUsedAcrossProjects(projects);
   const selectedProject = projects.find((p) => p.id === selectedProjectId);
 
@@ -111,6 +116,61 @@ function App() {
     setInventory(inventory.filter((item) => item.id !== id));
   }
 
+  function startEditingItem(item) {
+    setEditingItemId(item.id);
+    setEditedItemName(item.name);
+  }
+  
+  function cancelEditingItem() {
+    setEditingItemId(null);
+    setEditedItemName("");
+  }
+  
+  function saveEditedItemName(id) {
+    const trimmedName = editedItemName.trim();
+    if (!trimmedName) return;
+  
+    setInventory(
+      inventory.map((item) =>
+        item.id === id ? { ...item, name: trimmedName } : item
+      )
+    );
+  
+    setEditingItemId(null);
+    setEditedItemName("");
+  }
+
+  function startEditingTask(task) {
+    setEditingTaskId(task.id);
+    setEditedTaskName(task.text);
+  }
+  
+  function cancelEditingTask() {
+    setEditingTaskId(null);
+    setEditedTaskName("");
+  }
+  
+  function saveEditedTaskName(taskId) {
+    const trimmedName = editedTaskName.trim();
+    if (!trimmedName) return;
+  
+    setProjects(
+      projects.map((project) =>
+        project.id !== selectedProjectId
+          ? project
+          : {
+              ...project,
+              tasks: project.tasks.map((task) =>
+                task.id === taskId ? { ...task, text: trimmedName } : task
+              ),
+            }
+      )
+    );
+  
+    setEditingTaskId(null);
+    setEditedTaskName("");
+  }
+
   function addProject() {
     const project = {
       id: Date.now(),
@@ -124,6 +184,30 @@ function App() {
     setProjects([...projects, project]);
     setSelectedProjectId(project.id);
     setView("project");
+  }
+
+  function deleteProject() {
+    if (!selectedProject) return;
+  
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete "${selectedProject.name}"?`
+    );
+  
+    if (!confirmDelete) return;
+  
+    const updatedProjects = projects.filter(
+      (project) => project.id !== selectedProjectId
+    );
+  
+    setProjects(updatedProjects);
+  
+    if (updatedProjects.length > 0) {
+      setSelectedProjectId(updatedProjects[0].id);
+      setView("projects");
+    } else {
+      setSelectedProjectId(null);
+      setView("projects");
+    }
   }
 
   function toggleTask(taskId) {
@@ -333,28 +417,75 @@ function App() {
                     filteredInventory.map((item) => {
                       const used = usedAcrossProjects[item.id] || 0;
                       const available = item.quantity - used;
-                      return(
+                      return (
                         <div key={item.id} style={styles.listItem}>
-                          <div>
-                            <strong>{item.name}</strong>
+                          <div style={{ flex: 1, minWidth: "220px" }}>
+                            {editingItemId === item.id ? (
+                              <div style={styles.editRow}>
+                                <input
+                                  style={styles.inlineInput}
+                                  type="text"
+                                  value={editedItemName}
+                                  onChange={(e) => setEditedItemName(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                      saveEditedItemName(item.id);
+                                    }
+                                  }}
+                                />
+                                <button
+                                  style={styles.saveButton}
+                                  onClick={() => saveEditedItemName(item.id)}
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  style={styles.smallButton}
+                                  onClick={cancelEditingItem}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            ) : (
+                              <div style={styles.nameRow}>
+                                <strong>{item.name}</strong>
+                                <button
+                                  style={styles.editButton}
+                                  onClick={() => startEditingItem(item)}
+                                >
+                                  Edit
+                                </button>
+                              </div>
+                            )}
+                      
                             <p style={styles.mutedText}>
                               Total: {item.quantity} {item.unit} | Used: {used} | Available: {available}
                             </p>
                           </div>
+                      
                           <div style={styles.actions}>
-                            <button style={styles.smallButton} onClick={() => changeQty(item.id, -1)}>
+                            <button
+                              style={styles.smallButton}
+                              onClick={() => changeQty(item.id, -1)}
+                            >
                               -
                             </button>
                             <span style={styles.qty}>{item.quantity}</span>
-                            <button style={styles.smallButton} onClick={() => changeQty(item.id, 1)}>
+                            <button
+                              style={styles.smallButton}
+                              onClick={() => changeQty(item.id, 1)}
+                            >
                               +
                             </button>
-                            <button style={styles.deleteButton} onClick={() => deleteItem(item.id)}>
+                            <button
+                              style={styles.deleteButton}
+                              onClick={() => deleteItem(item.id)}
+                            >
                               Delete
                             </button>
                           </div>
                         </div>
-                      )
+                      );
                     })
                   )}
                 </div>
@@ -556,17 +687,62 @@ function App() {
                       checked={task.done}
                       onChange={() => toggleTask(task.id)}
                     />
-                    <span
-                      style={{
-                        marginLeft: "10px",
-                        textDecoration: task.done ? "line-through" : "none",
-                        color: task.done ? "#777" : "#111",
-                      }}
-                    >
-                      {task.text}
-                    </span>
+
+                    <div style={{ flex: 1, marginLeft: "10px" }}>
+                      {editingTaskId === task.id ? (
+                        <div style={styles.editRow}>
+                          <input
+                            style={styles.inlineInput}
+                            type="text"
+                            value={editedTaskName}
+                            onChange={(e) => setEditedTaskName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                saveEditedTaskName(task.id);
+                              }
+                            }}
+                          />
+                          <button
+                            style={styles.saveButton}
+                            onClick={() => saveEditedTaskName(task.id)}
+                          >
+                            Save
+                          </button>
+                          <button
+                            style={styles.smallButton}
+                            onClick={cancelEditingTask}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <div style={styles.nameRow}>
+                          <span
+                            style={{
+                              textDecoration: task.done ? "line-through" : "none",
+                              color: task.done ? "#777" : "#111",
+                            }}
+                          >
+                            {task.text}
+                          </span>
+
+                          <button
+                            style={styles.editButton}
+                            onClick={() => startEditingTask(task)}
+                          >
+                            Edit
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ))}
+
+                <div style={styles.deleteProjectRow}>
+                  <button style={styles.deleteProjectButton} onClick={deleteProject}>
+                    Delete Project
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -840,6 +1016,60 @@ itemRow: {
 itemAmount: {
   fontWeight: "bold",
   color: "#51565dff"
+},
+nameRow: {
+  display: "flex",
+  alignItems: "center",
+  gap: "10px",
+  flexWrap: "wrap",
+},
+
+editRow: {
+  display: "flex",
+  alignItems: "center",
+  gap: "8px",
+  flexWrap: "wrap",
+},
+
+inlineInput: {
+  padding: "8px 10px",
+  borderRadius: "8px",
+  border: "1px solid #ccc",
+  minWidth: "180px",
+},
+
+editButton: {
+  padding: "6px 12px",
+  borderRadius: "8px",
+  border: "1px solid #1f6feb",
+  backgroundColor: "#eef5ff",
+  color: "#1f6feb",
+  cursor: "pointer",
+},
+
+saveButton: {
+  padding: "6px 12px",
+  borderRadius: "8px",
+  border: "1px solid #2f8f46",
+  backgroundColor: "#eefbf1",
+  color: "#2f8f46",
+  cursor: "pointer",
+},
+
+deleteProjectRow: {
+  marginTop: "24px",
+  display: "flex",
+  justifyContent: "flex-end",
+},
+
+deleteProjectButton: {
+  padding: "10px 16px",
+  borderRadius: "10px",
+  border: "1px solid #c94a4a",
+  backgroundColor: "#fff1f1",
+  color: "#a22",
+  cursor: "pointer",
+  fontWeight: "bold",
 },
 };
 
