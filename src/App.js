@@ -39,6 +39,15 @@ const initialProjects = [
   },
 ];
 
+  const initialNewProject = {
+    id: Date.now(),
+    name: `New Project 0`,
+    notes: "",
+    reference: "No image uploaded",
+    materials: [],
+    tasks: [{ id: Date.now() + 1, text: "First task", done: false, materials: [] }],
+  };
+
 function calculateProgress(project) {
   if (!project.tasks.length) return 0;
   const done = project.tasks.filter((t) => t.done).length;
@@ -58,12 +67,31 @@ function calculateUsedAcrossProjects(projects) {
 
 function App() {
   const [view, setView] = useState("inventory");
-  const [inventory, setInventory] = useState(initialInventory);
-  const [projects, setProjects] = useState(initialProjects);
+  const [inventory, setInventory] = useState(() => {
+    const localInventory = localStorage.getItem('inventory');
+
+    if (localInventory) {
+      return JSON.parse(localInventory);
+    }
+    else{
+      return initialInventory;
+    }
+  });
+  const [projects, setProjects] = useState(() => {
+    const localProjects = localStorage.getItem('projects');
+
+    if (localProjects) {
+      return JSON.parse(localProjects);
+    }
+    else {
+      return initialProjects;
+    }  
+  });
   const [selectedProjectId, setSelectedProjectId] = useState(1);
   const [search, setSearch] = useState("");
   const [newItemName, setNewItemName] = useState("");
   const [newItemQty, setNewItemQty] = useState("1");
+  const [newItemUnit, setNewItemUnit] = useState("");
   const [newMaterialItemId, setNewMaterialItemId] = useState("");
   const [newMaterialQty, setNewMaterialQty] = useState("");
 
@@ -71,6 +99,12 @@ function App() {
   const [editedItemName, setEditedItemName] = useState("");
   const [editingTaskId, setEditingTaskId] = useState(null);
   const [editedTaskName, setEditedTaskName] = useState("");
+
+  const [newProjectName, setNewProjectName] = useState(initialNewProject.name);
+  const [newProjectNotes, setNewProjectNotes] = useState(initialNewProject.notes);
+  const [newProjectReferences, setNewProjectReferences] = useState(initialNewProject.reference);
+  const [newProjectMaterials, setNewProjectMaterials] = useState(initialNewProject.materials);
+  const [newProjectTasks, setNewProjectTasks] = useState(initialNewProject.tasks);
 
   const usedAcrossProjects = calculateUsedAcrossProjects(projects);
   const selectedProject = projects.find((p) => p.id === selectedProjectId);
@@ -94,12 +128,21 @@ function App() {
       id: Date.now(),
       name: newItemName.trim(),
       quantity: Number(newItemQty) || 1,
-      unit: "pcs",
+      unit: newItemUnit.trim() || "pcs",
     };
 
     setInventory([...inventory, item]);
+    localStorage.setItem('inventory', JSON.stringify([...inventory, item]));
     setNewItemName("");
     setNewItemQty("1");
+    setNewItemUnit("");
+    setSearch("");
+    setView("inventory");
+  }
+
+  function startAddItem() {
+    setSearch("");
+    setView("item");
   }
 
   function changeQty(id, delta) {
@@ -110,10 +153,12 @@ function App() {
           : item
       )
     );
+    localStorage.setItem('inventory', JSON.stringify(inventory));
   }
 
   function deleteItem(id) {
     setInventory(inventory.filter((item) => item.id !== id));
+    localStorage.setItem('inventory', JSON.stringify(inventory));
   }
 
   function startEditingItem(item) {
@@ -135,6 +180,7 @@ function App() {
         item.id === id ? { ...item, name: trimmedName } : item
       )
     );
+    localStorage.setItem('inventory', JSON.stringify(inventory));
   
     setEditingItemId(null);
     setEditedItemName("");
@@ -166,6 +212,7 @@ function App() {
             }
       )
     );
+    localStorage.setItem('projects', JSON.stringify(projects));
   
     setEditingTaskId(null);
     setEditedTaskName("");
@@ -174,16 +221,27 @@ function App() {
   function addProject() {
     const project = {
       id: Date.now(),
-      name: `New Project ${projects.length + 1}`,
-      notes: "",
-      reference: "No image uploaded",
-      materials: [],
-      tasks: [{ id: Date.now() + 1, text: "First task", done: false, materials: [] }],
+      name: newProjectName || `New Project ${projects.length + 1}`,
+      notes: newProjectNotes || "",
+      reference: newProjectReferences || "No image uploaded",
+      materials: newProjectMaterials || [],
+      tasks: newProjectTasks || [{ id: Date.now() + 1, text: "First task", done: false, materials: [] }],
     };
 
     setProjects([...projects, project]);
-    setSelectedProjectId(project.id);
-    setView("project");
+    localStorage.setItem('projects', JSON.stringify([...projects, project]));
+    setSearch("");
+    setNewProjectName(initialNewProject.name);
+    setNewProjectNotes(initialNewProject.notes);
+    setNewProjectReferences(initialInventory.reference);
+    setNewProjectMaterials(initialNewProject.materials);
+    setNewProjectTasks(initialNewProject.tasks);
+    setView("projects");
+  }
+
+  function startAddProject() {
+    setSearch("");
+    setView("newProject");
   }
 
   function deleteProject() {
@@ -200,12 +258,15 @@ function App() {
     );
   
     setProjects(updatedProjects);
+    localStorage.setItem('projects', JSON.stringify(updatedProjects));
   
     if (updatedProjects.length > 0) {
       setSelectedProjectId(updatedProjects[0].id);
+      setSearch("");
       setView("projects");
     } else {
       setSelectedProjectId(null);
+      setSearch("");
       setView("projects");
     }
   }
@@ -223,6 +284,7 @@ function App() {
             }
       )
     );
+    localStorage.setItem('projects', JSON.stringify(projects));
   }
 
   function addTask() {
@@ -244,29 +306,32 @@ function App() {
             }
       )
     )
+    localStorage.setItem('projects', JSON.stringify(projects));
   };
 
   function changeMaterialUsed(itemId, delta) {
-  setProjects(
-    projects.map((project) => {
-      if (project.id !== selectedProjectId) return project;
-      return {
-        ...project,
-        materials: project.materials.map((mat) => {
-          if (mat.itemId !== itemId) return mat;
+    setProjects(
+      projects.map((project) => {
+        if (project.id !== selectedProjectId) return project;
+        return {
+          ...project,
+          materials: project.materials.map((mat) => {
+            if (mat.itemId !== itemId) return mat;
 
-          const inventoryItem = inventory.find((i) => i.id === itemId);
-          const maxUsed = inventoryItem ? inventoryItem.quantity : 0;
-          const newUsed = Math.max(0, Math.min(maxUsed, mat.used + delta));
+            const inventoryItem = inventory.find((i) => i.id === itemId);
+            const maxUsed = inventoryItem ? inventoryItem.quantity : 0;
+            const newUsed = Math.max(0, Math.min(maxUsed, mat.used + delta));
 
-          return {
-            ...mat,
-            used: newUsed
-          };
-        })
-      };
-    })
-  )};
+            return {
+              ...mat,
+              used: newUsed
+            };
+          })
+        };
+      })
+    )
+    localStorage.setItem('projects', JSON.stringify(projects));
+  };
 
   function addMaterial() {
     if (!newMaterialItemId || !newMaterialQty) return;
@@ -299,6 +364,7 @@ function App() {
         };
       })
     );
+    localStorage.setItem('projects', JSON.stringify(projects));
     setNewMaterialItemId("");
     setNewMaterialQty("");
   }
@@ -314,9 +380,8 @@ function App() {
             }
       )
     );
+    localStorage.setItem('projects', JSON.stringify(projects));
   }
-
-  const totalItems = inventory.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
     <div style={styles.page}>
@@ -333,83 +398,42 @@ function App() {
               </p>
             </div>
           </div>
-          <button style={styles.primaryButton} onClick={addProject}>
-            + New Project
-          </button>
-        </div>
-
-        <div style={styles.layout}>
-          <div style={styles.sidebar}>
-            <div style={styles.section}>
-              <div style={styles.tabRow}>
+          <div style={styles.tabRow}>
                 <button
                   style={view === "inventory" ? styles.activeTab : styles.tab}
-                  onClick={() => setView("inventory")}
+                  onClick={() => {setSearch(""); setView("inventory");}}
                 >
                   Inventory
                 </button>
                 <button
                   style={view === "projects" ? styles.activeTab : styles.tab}
-                  onClick={() => setView("projects")}
+                  onClick={() => {setSearch(""); setView("projects");}}
                 >
                   Projects
                 </button>
-                <button
-                  style={view === "project" ? styles.activeTab : styles.tab}
-                  onClick={() => setView("project")}
-                >
-                  Details
-                </button>
               </div>
-            </div>
+        </div>
 
-            <div style={styles.section}>
-              <input
-                style={styles.input}
-                type="text"
-                placeholder="Search"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-
-            <div style={styles.statsRow}>
-              <div style={styles.statBox}>
-                <p style={styles.statLabel}>Total Items</p>
-                <h3>{totalItems}</h3>
-              </div>
-              <div style={styles.statBox}>
-                <p style={styles.statLabel}>Projects</p>
-                <h3>{projects.length}</h3>
-              </div>
-            </div>
-
-            <div style={styles.section}>
-              <h3>Add Inventory Item</h3>
-              <input
-                style={styles.input}
-                type="text"
-                placeholder="Item name"
-                value={newItemName}
-                onChange={(e) => setNewItemName(e.target.value)}
-              />
-              <input
-                style={styles.input}
-                type="number"
-                placeholder="Quantity"
-                value={newItemQty}
-                onChange={(e) => setNewItemQty(e.target.value)}
-              />
-              <button style={styles.primaryButtonFull} onClick={addItem}>
-                Add Item
-              </button>
-            </div>
-          </div>
+        <div style={styles.layout}>
 
           <div style={styles.main}>
             {view === "inventory" && (
               <div style={styles.card}>
                 <h2>Inventory Browser</h2>
+                <div style={styles.section}>
+                  <input
+                    style={styles.search}
+                    type="text"
+                    placeholder="Search"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                  <button style={styles.primaryButton} onClick={startAddItem}>
+                    + New Item
+                  </button>
+                </div>
+
+                
                 <div style={styles.scrollBox}>
                   {filteredInventory.length === 0 ? (
                     <p>No items found.</p>
@@ -495,6 +519,18 @@ function App() {
             {view === "projects" && (
               <div style={styles.card}>
                 <h2>Projects Browser</h2>
+                <div style={styles.section}>
+                  <input
+                    style={styles.search}
+                    type="text"
+                    placeholder="Search"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                <button style={styles.primaryButton} onClick={startAddProject}>
+                    + New Project
+                </button>  
+                </div>
                 <div style={styles.projectScroll}>
                   <div style={styles.projectGrid}>
                     {filteredProjects.map((project) => (
@@ -502,6 +538,7 @@ function App() {
                         key={project.id}
                         style={styles.projectCard}
                         onClick={() => {
+                          setSearch("");
                           setSelectedProjectId(project.id);
                           setView("project");
                         }}
@@ -745,6 +782,234 @@ function App() {
                 </div>
               </div>
             )}
+
+            {view === "newProject" && (
+              // ISSUES SO FAR:
+              // - Cannot affect the new project's tasks, materials, or references
+              <div style={styles.card}>
+                <h2>New Project Details</h2>
+
+                <label style={styles.label}>Project Name</label>
+                <input
+                  style={styles.input}
+                  type="text"
+                  placeholder={initialNewProject.name}
+                  value={newProjectName}
+                  onChange={(e) => setNewProjectName(e.target.value)}
+                />
+
+                <label style={styles.label}>Project Notes</label>
+                <textarea
+                  style={styles.textarea}
+                  placeholder="Input project notes here..."
+                  value={newProjectNotes}
+                  onChange={(e) => setNewProjectNotes(e.target.value)}
+                />
+
+                <div style={styles.referenceBox}>
+                  <strong>Reference Frame:</strong>
+                  <p>{newProjectReferences}</p>
+                </div>
+
+                <div style={styles.materialsSection}>
+
+                  <div style={styles.materialBox}>
+                  <h3>Items Needed</h3>
+                  <div style={{ marginBottom: "12px" }}>
+                    <select
+                      style={styles.input}
+                      value={newMaterialItemId}
+                      onChange={(e) => setNewMaterialItemId(e.target.value)}
+                    >
+                      <option value="">Select item</option>
+
+                      {inventory.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.name}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      style={styles.input}
+                      type="number"
+                      placeholder="Quantity needed"
+                      value={newMaterialQty}
+                      onChange={(e) => setNewMaterialQty(e.target.value)}
+                    />
+                    <button style={styles.primaryButtonFull} onClick={addMaterial}>
+                      Add Material
+                    </button>
+                  </div>
+
+                  {!newProjectMaterials || newProjectMaterials.length === 0 ? (
+                    <p style={styles.mutedText}>No materials added yet.</p>
+                  ) : (
+                    newProjectMaterials.materials.map((mat) => {
+                      const item = inventory.find((i) => i.id === mat.itemId);
+                      if (!item) return null;
+                      return (
+                        <div key={mat.itemId} style={styles.itemRow}>
+                          <span>{item.name}</span>
+                          <div style={styles.actions}>
+                            <span style={styles.itemAmount}>
+                              {mat.needed} {item.unit}
+                            </span>
+                            <button
+                              style={styles.deleteButton}
+                              onClick={() => removeMaterial(mat.itemId)}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                <div style={styles.materialBox}>
+                  <h3>Items Used</h3>
+                  {!newProjectMaterials || newProjectMaterials.length === 0 ? (
+                    <p style={styles.mutedText}>No materials added yet.</p>
+                  ) : (
+                    newProjectMaterials.map((mat) => {
+                      const item = inventory.find((i) => i.id === mat.itemId);
+                      if (!item) return null;
+                      const available = item.quantity - mat.used;
+                      return (
+                        <div key={mat.itemId} style={styles.itemRow}>
+                          <div>
+                            <strong>{item.name}</strong>
+                            <p style={styles.mutedText}>
+                              Used: {mat.used} {item.unit} | Available: {available} {item.unit}
+                            </p>
+                          </div>
+
+                          <div style={styles.actions}>
+                            <button
+                              style={styles.smallButton}
+                              onClick={() => changeMaterialUsed(mat.itemId, -1)}
+                            >
+                              -
+                            </button>
+                            <span style={styles.qty}>{mat.used}</span>
+                            <button
+                              style={styles.smallButton}
+                              onClick={() => changeMaterialUsed(mat.itemId, 1)}
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+                <div style={styles.taskHeader}>
+                  <h3>Task Checklist</h3>
+                  <button style={styles.primaryButton} onClick={addTask}>
+                    Add Task
+                  </button>
+                </div>
+
+                {newProjectTasks.map((task) => (
+                  <div key={task.id} style={styles.taskItem}>
+                    <input
+                      type="checkbox"
+                      checked={task.done}
+                      onChange={() => toggleTask(task.id)}
+                    />
+
+                    <div style={{ flex: 1, marginLeft: "10px" }}>
+                      {editingTaskId === task.id ? (
+                        <div style={styles.editRow}>
+                          <input
+                            style={styles.inlineInput}
+                            type="text"
+                            value={editedTaskName}
+                            onChange={(e) => setEditedTaskName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                saveEditedTaskName(task.id);
+                              }
+                            }}
+                          />
+                          <button
+                            style={styles.saveButton}
+                            onClick={() => saveEditedTaskName(task.id)}
+                          >
+                            Save
+                          </button>
+                          <button
+                            style={styles.smallButton}
+                            onClick={cancelEditingTask}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <div style={styles.nameRow}>
+                          <span
+                            style={{
+                              textDecoration: task.done ? "line-through" : "none",
+                              color: task.done ? "#777" : "#111",
+                            }}
+                          >
+                            {task.text}
+                          </span>
+
+                          <button
+                            style={styles.editButton}
+                            onClick={() => startEditingTask(task)}
+                          >
+                            Edit
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+
+                <div style={styles.deleteProjectRow}>
+                  <button style={styles.primaryButtonFull} onClick={addProject}>
+                    Add Project
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {view === "item" && (
+              <div style={styles.card}>
+                <h2>Add Inventory Item</h2>
+                <input
+                  style={styles.input}
+                  type="text"
+                  placeholder="Item name"
+                  value={newItemName}
+                  onChange={(e) => setNewItemName(e.target.value)}
+                />
+                <input
+                  style={styles.input}
+                  type="number"
+                  placeholder="Quantity"
+                  value={newItemQty}
+                  onChange={(e) => setNewItemQty(e.target.value)}
+                />
+                <input
+                  style={styles.input}
+                  type="text"
+                  placeholder="Unit (e.g. pcs, yd)"
+                  value={newItemUnit}
+                  onChange={(e) => setNewItemUnit(e.target.value)}
+                />
+                <button style={styles.primaryButtonFull} onClick={addItem}>
+                  Add Item
+                </button>
+              </div>
+            )}
+
           </div>
         </div>
       </div>
@@ -801,7 +1066,7 @@ const styles = {
   },
   layout: {
     display: "grid",
-    gridTemplateColumns: "280px 1fr",
+    gridTemplateColumns: "1fr",
     gap: "24px",
   },
   sidebar: {
@@ -844,6 +1109,16 @@ const styles = {
     padding: "12px",
     marginTop: "8px",
     marginBottom: "10px",
+    borderRadius: "10px",
+    border: "1px solid #ccc",
+    boxSizing: "border-box",
+  },
+  search: {
+    width: "85%",
+    padding: "12px",
+    marginTop: "8px",
+    marginBottom: "10px",
+    marginRight: "12px",
     borderRadius: "10px",
     border: "1px solid #ccc",
     boxSizing: "border-box",
