@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import logo from "./CraftTracksLogo.png";
+import { Rnd } from "react-rnd";
 
 const initialInventory = [
   { id: 1, name: "Green Beads", quantity: 73, unit: "pcs" },
@@ -19,12 +20,6 @@ const initialProjects = [
       { itemId: 2, needed: 10, used: 4 },
       { itemId: 4, needed: 3, used: 1 }
     ],
-    tasks: [
-      { id: 1, text: "Measure client", done: true, materials: [{ itemId: 4, amount: 1 }] },
-      { id: 2, text: "Cut fabric", done: true, materials: [{ itemId: 3, amount: 1 }] },
-      { id: 3, text: "Sew body", done: false, materials: [{ itemId: 3, amount: 2 }] },
-      { id: 4, text: "Add bead details", done: false, materials: [{ itemId: 1, amount: 5 }, { itemId: 2, amount: 3 }] },
-    ],
   },
   {
     id: 2,
@@ -32,12 +27,44 @@ const initialProjects = [
     notes: "Test project for material planning.",
     reference: "Pattern board",
     materials: [],
-    tasks: [
-      { id: 1, text: "Choose yarn colors", done: false, materials: [] },
-      { id: 2, text: "Start base layer", done: false, materials: [] },
-    ],
   },
 ];
+
+const initialWorkspaces = {
+    1: [
+      {
+        id: 101,
+        x: 30,
+        y: 30,
+        width: 260,
+        height: 180,
+        type: "checklist",
+        color: "#1f6feb",
+        content: [
+          { text: "Cut rose fabric", done: true },
+          { text: "Pin pattern pieces", done: true },
+          { text: "Sew initial seams", done: false },
+        ],
+      },
+    ],
+
+    2: [
+      {
+        id: 201,
+        x: 40,
+        y: 40,
+        width: 260,
+        height: 180,
+        type: "checklist",
+        color: "#1f6feb",
+        content: [
+          { text: "Measure carpet base", done: true },
+          { text: "Align rose pattern tiles", done: false },
+          { text: "Stitch sections", done: false },
+        ],
+      },
+    ],
+  };
 
   const initialNewProject = {
     id: Date.now(),
@@ -45,13 +72,18 @@ const initialProjects = [
     notes: "",
     reference: "No image uploaded",
     materials: [],
-    tasks: [{ id: Date.now() + 1, text: "First task", done: false, materials: [] }],
   };
 
-function calculateProgress(project) {
-  if (!project.tasks.length) return 0;
-  const done = project.tasks.filter((t) => t.done).length;
-  return Math.round((done / project.tasks.length) * 100);
+function calculateProgress(project, workspaceBoxes = []) {
+  const checklistItems = workspaceBoxes
+    .filter((b) => b.type === "checklist")
+    .flatMap((b) => b.content || []);
+
+  const score = checklistItems.length
+    ? checklistItems.filter((i) => i.done).length / checklistItems.length
+    : 0;
+
+  return Math.round(score * 100);
 }
 
 function calculateUsedAcrossProjects(projects) {
@@ -67,27 +99,14 @@ function calculateUsedAcrossProjects(projects) {
 
 function App() {
   const [view, setView] = useState("inventory");
-  const [inventory, setInventory] = useState(() => {
-    const localInventory = localStorage.getItem('inventory');
-
-    if (localInventory) {
-      return JSON.parse(localInventory);
-    }
-    else{
-      return initialInventory;
-    }
-  });
-  const [projects, setProjects] = useState(() => {
-    const localProjects = localStorage.getItem('projects');
-
-    if (localProjects) {
-      return JSON.parse(localProjects);
-    }
-    else {
-      return initialProjects;
-    }  
-  });
+  const [projectWorkspaces, setProjectWorkspaces] = useState(initialWorkspaces);
+  const [inventory, setInventory] = useState(initialInventory);
+  const [projects, setProjects] = useState(initialProjects);
+  
   const [selectedProjectId, setSelectedProjectId] = useState(1);
+    const selectedProject = projects.find(
+    (project) => project.id === selectedProjectId
+  );
   const [search, setSearch] = useState("");
   const [newItemName, setNewItemName] = useState("");
   const [newItemQty, setNewItemQty] = useState("1");
@@ -97,17 +116,17 @@ function App() {
 
   const [editingItemId, setEditingItemId] = useState(null);
   const [editedItemName, setEditedItemName] = useState("");
-  const [editingTaskId, setEditingTaskId] = useState(null);
-  const [editedTaskName, setEditedTaskName] = useState("");
 
   const [newProjectName, setNewProjectName] = useState(initialNewProject.name);
   const [newProjectNotes, setNewProjectNotes] = useState(initialNewProject.notes);
   const [newProjectReferences, setNewProjectReferences] = useState(initialNewProject.reference);
   const [newProjectMaterials, setNewProjectMaterials] = useState(initialNewProject.materials);
-  const [newProjectTasks, setNewProjectTasks] = useState(initialNewProject.tasks);
 
   const usedAcrossProjects = calculateUsedAcrossProjects(projects);
-  const selectedProject = projects.find((p) => p.id === selectedProjectId);
+  const workspaceBoxes = projectWorkspaces[selectedProjectId] || [];
+
+  const [newBoxType, setNewBoxType] = useState("text");
+  const [newBoxColor, setNewBoxColor] = useState("#1f6feb"); // default blue
 
   const filteredInventory = useMemo(() => {
     return inventory.filter((item) =>
@@ -143,6 +162,13 @@ function App() {
   function startAddItem() {
     setSearch("");
     setView("item");
+  }
+
+  function setWorkspaceBoxes(updatedBoxes) {
+    setProjectWorkspaces(prev => ({
+      ...prev,
+      [selectedProjectId]: updatedBoxes
+    }));
   }
 
   function changeQty(id, delta) {
@@ -186,47 +212,14 @@ function App() {
     setEditedItemName("");
   }
 
-  function startEditingTask(task) {
-    setEditingTaskId(task.id);
-    setEditedTaskName(task.text);
-  }
-  
-  function cancelEditingTask() {
-    setEditingTaskId(null);
-    setEditedTaskName("");
-  }
-  
-  function saveEditedTaskName(taskId) {
-    const trimmedName = editedTaskName.trim();
-    if (!trimmedName) return;
-  
-    setProjects(
-      projects.map((project) =>
-        project.id !== selectedProjectId
-          ? project
-          : {
-              ...project,
-              tasks: project.tasks.map((task) =>
-                task.id === taskId ? { ...task, text: trimmedName } : task
-              ),
-            }
-      )
-    );
-    localStorage.setItem('projects', JSON.stringify(projects));
-  
-    setEditingTaskId(null);
-    setEditedTaskName("");
-  }
-
   function addProject() {
     const project = {
-      id: Date.now(),
-      name: newProjectName || `New Project ${projects.length + 1}`,
-      notes: newProjectNotes || "",
-      reference: newProjectReferences || "No image uploaded",
-      materials: newProjectMaterials || [],
-      tasks: newProjectTasks || [{ id: Date.now() + 1, text: "First task", done: false, materials: [] }],
-    };
+    id: Date.now(),
+    name: newProjectName || `New Project ${projects.length + 1}`,
+    notes: newProjectNotes || "",
+    reference: newProjectReferences || "No image uploaded",
+    materials: newProjectMaterials || []
+  };
 
     setProjects([...projects, project]);
     localStorage.setItem('projects', JSON.stringify([...projects, project]));
@@ -235,7 +228,6 @@ function App() {
     setNewProjectNotes(initialNewProject.notes);
     setNewProjectReferences(initialInventory.reference);
     setNewProjectMaterials(initialNewProject.materials);
-    setNewProjectTasks(initialNewProject.tasks);
     setView("projects");
   }
 
@@ -270,44 +262,6 @@ function App() {
       setView("projects");
     }
   }
-
-  function toggleTask(taskId) {
-    setProjects(
-      projects.map((project) =>
-        project.id !== selectedProjectId
-          ? project
-          : {
-              ...project,
-              tasks: project.tasks.map((task) =>
-                task.id === taskId ? { ...task, done: !task.done } : task
-              ),
-            }
-      )
-    );
-    localStorage.setItem('projects', JSON.stringify(projects));
-  }
-
-  function addTask() {
-    setProjects(
-      projects.map((project) =>
-        project.id !== selectedProjectId
-          ? project
-          : {
-              ...project,
-              tasks: [
-                ...project.tasks,
-                {
-                  id: Date.now(),
-                  text: `New task ${project.tasks.length + 1}`,
-                  done: false,
-                  materials: [],
-                },
-              ],
-            }
-      )
-    )
-    localStorage.setItem('projects', JSON.stringify(projects));
-  };
 
   function changeMaterialUsed(itemId, delta) {
     setProjects(
@@ -382,6 +336,7 @@ function App() {
     );
     localStorage.setItem('projects', JSON.stringify(projects));
   }
+
 
   return (
     <div style={styles.page}>
@@ -540,20 +495,33 @@ function App() {
                         onClick={() => {
                           setSearch("");
                           setSelectedProjectId(project.id);
-                          setView("project");
+                          setView("workspace"); // NEW VIEW
                         }}
                       >
-                        <h3>{project.name}</h3>
-                        <p style={styles.mutedText}>{project.tasks.length} tasks</p>
+                        <div style={{ display: "flex", justifyContent: "space-between" }}>
+                          <h3>{project.name}</h3>
+
+                          <button
+                            style={styles.settingsButton}
+                            onClick={(e) => {
+                              e.stopPropagation(); // IMPORTANT: prevents triggering card click
+                              setSelectedProjectId(project.id);
+                              setView("project"); // OLD DETAILS VIEW
+                            }}
+                          >
+                            ⚙️
+                          </button>
+                        </div>
+                        <p style={styles.mutedText}>Workspace-based progress</p>
                         <div style={styles.progressBarOuter}>
                           <div
                             style={{
                               ...styles.progressBarInner,
-                              width: `${calculateProgress(project)}%`,
+                              width: `${calculateProgress(project, projectWorkspaces[project.id] || [])}%`,
                             }}
                           ></div>
                         </div>
-                        <p>{calculateProgress(project)}% complete</p>
+                        <p>{calculateProgress(project, projectWorkspaces[project.id] || [])}% complete</p>
                       </div>
                     ))}
                   </div>
@@ -606,11 +574,11 @@ function App() {
                   <div
                     style={{
                       ...styles.progressBarInner,
-                      width: `${calculateProgress(selectedProject)}%`,
+                      width: `${calculateProgress(selectedProject, [])}%`,
                     }}
                   ></div>
                 </div>
-                <p>{calculateProgress(selectedProject)}% complete</p>
+                <p>{calculateProgress(selectedProject, [])}% complete</p>
 
 
 
@@ -710,75 +678,270 @@ function App() {
                 </div>
               </div>
 
-                <div style={styles.taskHeader}>
-                  <h3>Task Checklist</h3>
-                  <button style={styles.primaryButton} onClick={addTask}>
-                    Add Task
-                  </button>
-                </div>
-
-                {selectedProject.tasks.map((task) => (
-                  <div key={task.id} style={styles.taskItem}>
-                    <input
-                      type="checkbox"
-                      checked={task.done}
-                      onChange={() => toggleTask(task.id)}
-                    />
-
-                    <div style={{ flex: 1, marginLeft: "10px" }}>
-                      {editingTaskId === task.id ? (
-                        <div style={styles.editRow}>
-                          <input
-                            style={styles.inlineInput}
-                            type="text"
-                            value={editedTaskName}
-                            onChange={(e) => setEditedTaskName(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                saveEditedTaskName(task.id);
-                              }
-                            }}
-                          />
-                          <button
-                            style={styles.saveButton}
-                            onClick={() => saveEditedTaskName(task.id)}
-                          >
-                            Save
-                          </button>
-                          <button
-                            style={styles.smallButton}
-                            onClick={cancelEditingTask}
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      ) : (
-                        <div style={styles.nameRow}>
-                          <span
-                            style={{
-                              textDecoration: task.done ? "line-through" : "none",
-                              color: task.done ? "#777" : "#111",
-                            }}
-                          >
-                            {task.text}
-                          </span>
-
-                          <button
-                            style={styles.editButton}
-                            onClick={() => startEditingTask(task)}
-                          >
-                            Edit
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-
                 <div style={styles.deleteProjectRow}>
                   <button style={styles.deleteProjectButton} onClick={deleteProject}>
                     Delete Project
                   </button>
+                </div>
+              </div>
+            )}
+
+            {view === "workspace" && selectedProject && (
+              <div style={styles.workspacePage}>
+                <h2>{selectedProject.name} Workspace</h2>
+
+                <p>{calculateProgress(selectedProject, workspaceBoxes)}% complete</p>
+
+                <div style={styles.progressBarOuter}>
+                  <div
+                    style={{
+                      ...styles.progressBarInner,
+                      width: `${calculateProgress(selectedProject, workspaceBoxes)}%`,
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+  
+                  <select
+                    style={styles.input}
+                    value={newBoxType}
+                    onChange={(e) => setNewBoxType(e.target.value)}
+                  >
+                    <option value="text">Text</option>
+                    <option value="checklist">Checklist</option>
+                    <option value="photo">Photo</option>
+                  </select>
+
+                  <input
+                    type="color"
+                    value={newBoxColor}
+                    onChange={(e) => setNewBoxColor(e.target.value)}
+                    title="Pick tab color"
+                  />
+
+                  <button
+                    style={styles.primaryButton}
+                    onClick={() => {
+                      setWorkspaceBoxes([
+                        ...workspaceBoxes,
+                        {
+                          id: Date.now(),
+                          x: 50,
+                          y: 50,
+                          width: 250,
+                          height: 180,
+                          type: newBoxType,
+                          color: newBoxColor, // NEW
+                          content:
+                            newBoxType === "checklist"
+                              ? [{ text: "New task", done: false }]
+                              : newBoxType === "photo"
+                              ? null
+                              : "New Box"
+                        }
+                      ]);
+                    }}
+                  >
+                    + Add Box
+                  </button>
+
+                </div>
+
+                <div
+                  style={{
+                    position: "relative",
+                    height: "1000px",
+                    border: "1px solid #ccc",
+                    marginTop: "20px"
+                  }}
+                >
+                  {workspaceBoxes.map((box) => (
+                    <Rnd
+                      key={box.id}
+                      size={{ width: box.width, height: box.height }}
+                      position={{ x: box.x, y: box.y }}
+                      onDragStop={(e, d) => {
+                        const updated = workspaceBoxes.map(b =>
+                          b.id === box.id ? { ...b, x: d.x, y: d.y } : b
+                        );
+                        setWorkspaceBoxes(updated);
+                      }}
+                      onResizeStop={(e, direction, ref, delta, position) => {
+                        const updated = workspaceBoxes.map(b =>
+                          b.id === box.id
+                            ? {
+                                ...b,
+                                width: ref.offsetWidth,
+                                height: ref.offsetHeight,
+                                x: position.x,
+                                y: position.y
+                              }
+                            : b
+                        );
+                        setWorkspaceBoxes(updated);
+                      }}
+                    >
+                      <div
+                        style={{
+                          background: "white",
+                          height: "100%",
+                          border: "1px solid #ddd",
+                          display: "flex",
+                          flexDirection: "column"
+                        }}
+                      >
+                        {/* TAB HEADER */}
+                        <div
+                          style={{
+                            background: box.color || "#1f6feb",
+                            color: "white",
+                            padding: "6px 10px",
+                            borderTopLeftRadius: "4px",
+                            borderTopRightRadius: "4px",
+                            fontSize: "12px",
+                            fontWeight: "bold",
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center"
+                          }}
+                        >
+                          <span>{box.type.toUpperCase()}</span>
+
+                          <button
+                            onClick={() => {
+                              const confirmDelete = window.confirm("Delete this box?");
+                              if (!confirmDelete) return;
+
+                              setWorkspaceBoxes(workspaceBoxes.filter(b => b.id !== box.id));
+                            }}
+                            style={{
+                              background: "transparent",
+                              border: "none",
+                              color: "white",
+                              cursor: "pointer",
+                              fontWeight: "bold"
+                            }}
+                          >
+                            ✕
+                          </button>
+                        </div>
+
+                        {/* CONTENT */}
+                        <div style={{ padding: "10px", flex: 1 }}>
+                          
+                          {box.type === "text" && (
+                            <textarea
+                              value={box.content}
+                              onChange={(e) => {
+                                const updated = workspaceBoxes.map(b =>
+                                  b.id === box.id ? { ...b, content: e.target.value } : b
+                                );
+                                setWorkspaceBoxes(updated);
+                              }}
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                border: "none",
+                                outline: "none",
+                                resize: "none"
+                              }}
+                            />
+                          )}
+
+                          {box.type === "checklist" && (
+                            <div>
+                              {box.content.map((item, i) => (
+                                <div key={i} style={{ display: "flex", gap: "6px" }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={item.done}
+                                    onChange={() => {
+                                      const updated = workspaceBoxes.map(b => {
+                                        if (b.id !== box.id) return b;
+                                        const newContent = [...b.content];
+                                        newContent[i].done = !newContent[i].done;
+                                        return { ...b, content: newContent };
+                                      });
+                                      setWorkspaceBoxes(updated);
+                                    }}
+                                  />
+
+                                  <input
+                                    type="text"
+                                    value={item.text}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") {
+                                        const updated = workspaceBoxes.map(b => {
+                                          if (b.id !== box.id) return b;
+
+                                          const newContent = [...b.content];
+                                          newContent.splice(i + 1, 0, {
+                                            text: "",
+                                            done: false
+                                          });
+
+                                          return { ...b, content: newContent };
+                                        });
+
+                                        setWorkspaceBoxes(updated);
+                                      }
+                                    }}
+                                    onChange={(e) => {
+                                      const updated = workspaceBoxes.map(b => {
+                                        if (b.id !== box.id) return b;
+                                        const newContent = [...b.content];
+                                        newContent[i].text = e.target.value;
+                                        return { ...b, content: newContent };
+                                      });
+                                      setWorkspaceBoxes(updated);
+                                    }}
+                                    style={{ flex: 1, border: "none", outline: "none" }}
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {box.type === "photo" && (
+                            <div>
+                              {/* Only show file input if no image has been selected yet */}
+                              {!box.content && (
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  onChange={(e) => {
+                                    const file = e.target.files[0];
+                                    if (!file) return;
+
+                                    const reader = new FileReader();
+                                    reader.onload = () => {
+                                      const updated = workspaceBoxes.map((b) =>
+                                        b.id === box.id
+                                          ? { ...b, content: reader.result }
+                                          : b
+                                      );
+                                      setWorkspaceBoxes(updated);
+                                    };
+                                    reader.readAsDataURL(file);
+                                  }}
+                                />
+                              )}
+
+                              {box.content && (
+                                <img
+                                  src={box.content}
+                                  alt="uploaded"
+                                  style={{ width: "100%", marginTop: "10px" }}
+                                />
+                              )}
+                            </div>
+                          )}
+
+                        </div>
+                      </div>
+                    </Rnd>
+                  ))}
                 </div>
               </div>
             )}
@@ -907,71 +1070,6 @@ function App() {
                 </div>
               </div>
 
-                <div style={styles.taskHeader}>
-                  <h3>Task Checklist</h3>
-                  <button style={styles.primaryButton} onClick={addTask}>
-                    Add Task
-                  </button>
-                </div>
-
-                {newProjectTasks.map((task) => (
-                  <div key={task.id} style={styles.taskItem}>
-                    <input
-                      type="checkbox"
-                      checked={task.done}
-                      onChange={() => toggleTask(task.id)}
-                    />
-
-                    <div style={{ flex: 1, marginLeft: "10px" }}>
-                      {editingTaskId === task.id ? (
-                        <div style={styles.editRow}>
-                          <input
-                            style={styles.inlineInput}
-                            type="text"
-                            value={editedTaskName}
-                            onChange={(e) => setEditedTaskName(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                saveEditedTaskName(task.id);
-                              }
-                            }}
-                          />
-                          <button
-                            style={styles.saveButton}
-                            onClick={() => saveEditedTaskName(task.id)}
-                          >
-                            Save
-                          </button>
-                          <button
-                            style={styles.smallButton}
-                            onClick={cancelEditingTask}
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      ) : (
-                        <div style={styles.nameRow}>
-                          <span
-                            style={{
-                              textDecoration: task.done ? "line-through" : "none",
-                              color: task.done ? "#777" : "#111",
-                            }}
-                          >
-                            {task.text}
-                          </span>
-
-                          <button
-                            style={styles.editButton}
-                            onClick={() => startEditingTask(task)}
-                          >
-                            Edit
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-
                 <div style={styles.deleteProjectRow}>
                   <button style={styles.primaryButtonFull} onClick={addProject}>
                     Add Project
@@ -1022,6 +1120,12 @@ const styles = {
     width: 120,
     height: 120
   },
+  settingsButton: {
+  border: "none",
+  background: "transparent",
+  cursor: "pointer",
+  fontSize: "18px"
+  },
   scrollBox: {
     maxHeight: "454px",
     overflowY: "auto",
@@ -1035,20 +1139,24 @@ const styles = {
     fontFamily: "Arial, sans-serif",
   },
   container: {
-    maxWidth: "1200px",
-    margin: "0 auto",
+    width: "100%",
+    maxWidth: "100%",
+    boxSizing: "border-box",
+    margin: 0,
+    padding: "0 24px",
+    overflowX: "hidden",
   },
   header: {
+    width: "100%",
     backgroundColor: "white",
-    borderRadius: "20px",
-    padding: "24px",
-    marginBottom: "24px",
+    padding: "24px 24px",   // keep consistent horizontal padding
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
     gap: "20px",
     flexWrap: "wrap",
     boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+    boxSizing: "border-box" // ✅ important alignment fix
   },
   smallTitle: {
     margin: 0,
@@ -1083,11 +1191,16 @@ const styles = {
   },
   section: {
     marginBottom: "20px",
+    display: "flex",
+    gap: "12px",
+    flexWrap: "wrap",
+    alignItems: "center",
   },
   tabRow: {
     display: "flex",
     gap: "8px",
     flexWrap: "wrap",
+    paddingRight: "8px" // ✅ adds breathing room from edge
   },
   tab: {
     padding: "10px 14px",
@@ -1114,11 +1227,11 @@ const styles = {
     boxSizing: "border-box",
   },
   search: {
-    width: "85%",
+    flex: 1,
+    minWidth: 0,
     padding: "12px",
     marginTop: "8px",
     marginBottom: "10px",
-    marginRight: "12px",
     borderRadius: "10px",
     border: "1px solid #ccc",
     boxSizing: "border-box",
@@ -1157,9 +1270,10 @@ const styles = {
   },
   card: {
     backgroundColor: "white",
-    borderRadius: "20px",
     padding: "24px",
     boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+    width: "100%",          // ✅ ADD THIS
+    boxSizing: "border-box" // (safe alignment fix)
   },
   listItem: {
     display: "flex",
@@ -1183,6 +1297,13 @@ const styles = {
     borderRadius: "8px",
     border: "1px solid #ccc",
     cursor: "pointer",
+  },
+  workspacePage: {
+    width: "100%",
+    minHeight: "100vh",
+    backgroundColor: "white",
+    padding: "24px",
+    boxSizing: "border-box",
   },
   deleteButton: {
     padding: "6px 12px",
@@ -1225,10 +1346,11 @@ const styles = {
     gap: "16px",
   },
   projectScroll: {
-    maxHeight: "454px",
-    overflowX: "auto",
-    paddingBottom: "8px"
-  },
+  maxHeight: "454px",
+  overflowY: "auto",
+  overflowX: "hidden",
+  paddingBottom: "8px",
+},
   projectCard: {
     border: "1px solid #ddd",
     borderRadius: "16px",
@@ -1273,9 +1395,9 @@ const styles = {
   },
   materialsSection: {
   display: "grid",
-  gridTemplateColumns: "1fr 1fr",
+  gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
   gap: "20px",
-  marginTop: "20px"
+  marginTop: "20px",
 },
 materialBox: {
   backgroundColor: "#f8f6f0",
