@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import logo from "./CraftTracksLogo.png";
+import logo from "./assets/CraftTracksLogo.png";
 import { Rnd } from "react-rnd";
 
 const initialInventory = [
@@ -31,39 +31,39 @@ const initialProjects = [
 ];
 
 const initialWorkspaces = {
-    1: [
-      {
-        id: 101,
-        x: 30,
-        y: 30,
-        width: 260,
-        height: 180,
-        type: "checklist",
-        color: "#1f6feb",
-        content: [
-          { text: "Cut rose fabric", done: true },
-          { text: "Pin pattern pieces", done: true },
-          { text: "Sew initial seams", done: false },
-        ],
-      },
-    ],
+  1: [
+    {
+      id: 101,
+      x: 30,
+      y: 30,
+      width: 260,
+      height: 180,
+      type: "checklist",
+      color: "#1f6feb",
+      content: [
+        { text: "Cut rose fabric", done: true, materials: [] },
+        { text: "Pin pattern pieces", done: true, materials: [] },
+        { text: "Sew initial seams", done: false, materials: [] },
+      ],
+    },
+  ],
 
-    2: [
-      {
-        id: 201,
-        x: 40,
-        y: 40,
-        width: 260,
-        height: 180,
-        type: "checklist",
-        color: "#1f6feb",
-        content: [
-          { text: "Measure carpet base", done: true },
-          { text: "Align rose pattern tiles", done: false },
-          { text: "Stitch sections", done: false },
-        ],
-      },
-    ],
+  2: [
+    {
+      id: 201,
+      x: 40,
+      y: 40,
+      width: 260,
+      height: 180,
+      type: "checklist",
+      color: "#1f6feb",
+      content: [
+        { text: "Measure carpet base", done: true, materials: [] },
+        { text: "Align rose pattern tiles", done: false, materials: [] },
+        { text: "Stitch sections", done: false, materials: [] },
+      ],
+    },
+  ],
   };
 
   const initialNewProject = {
@@ -86,14 +86,22 @@ function calculateProgress(project, workspaceBoxes = []) {
   return Math.round(score * 100);
 }
 
-function calculateUsedAcrossProjects(projects) {
+function calculateUsedAcrossProjects(projectWorkspaces) {
   const used = {};
-  projects.forEach((project) => {
-    (project.materials || []).forEach((mat) => {
-      if (!used[mat.itemId]) used[mat.itemId] = 0;
-      used[mat.itemId] += mat.used;
-    });
+
+  Object.values(projectWorkspaces || {}).forEach((workspaceBoxes = []) => {
+    workspaceBoxes
+      .filter((box) => box.type === "checklist")
+      .forEach((box) => {
+        (box.content || []).forEach((item) => {
+          (item.materials || []).forEach((mat) => {
+            if (!used[mat.itemId]) used[mat.itemId] = 0;
+            used[mat.itemId] += mat.quantity;
+          });
+        });
+      });
   });
+
   return used;
 }
 
@@ -122,11 +130,12 @@ function App() {
   const [newProjectReferences, setNewProjectReferences] = useState(initialNewProject.reference);
   const [newProjectMaterials, setNewProjectMaterials] = useState(initialNewProject.materials);
 
-  const usedAcrossProjects = calculateUsedAcrossProjects(projects);
+  const usedAcrossProjects = calculateUsedAcrossProjects(projectWorkspaces);
   const workspaceBoxes = projectWorkspaces[selectedProjectId] || [];
 
   const [newBoxType, setNewBoxType] = useState("text");
   const [newBoxColor, setNewBoxColor] = useState("#1f6feb"); // default blue
+  const [checklistMaterialInputs, setChecklistMaterialInputs] = useState({});
 
   const filteredInventory = useMemo(() => {
     return inventory.filter((item) =>
@@ -336,6 +345,98 @@ function App() {
     );
     localStorage.setItem('projects', JSON.stringify(projects));
   }
+  function getChecklistMaterialInput(boxId, itemIndex) {
+  return checklistMaterialInputs[`${boxId}-${itemIndex}`] || {
+    itemId: "",
+    quantity: "1",
+  };
+}
+
+function setChecklistMaterialInput(boxId, itemIndex, field, value) {
+  const key = `${boxId}-${itemIndex}`;
+  setChecklistMaterialInputs((prev) => ({
+    ...prev,
+    [key]: {
+      ...(prev[key] || { itemId: "", quantity: "1" }),
+      [field]: value,
+    },
+  }));
+}
+
+function addMaterialToChecklistItem(boxId, itemIndex) {
+  const key = `${boxId}-${itemIndex}`;
+  const input = checklistMaterialInputs[key] || { itemId: "", quantity: "1" };
+
+  if (!input.itemId || !input.quantity) return;
+
+  const itemId = Number(input.itemId);
+  const quantity = Number(input.quantity);
+
+  if (!quantity || quantity < 1) return;
+
+  const inventoryItem = inventory.find((item) => item.id === itemId);
+  const currentlyUsed = usedAcrossProjects[itemId] || 0;
+  const available = inventoryItem ? inventoryItem.quantity - currentlyUsed : 0;
+
+  if (quantity > available) {
+    window.alert("Not enough inventory available for that allocation.");
+    return;
+  }
+
+  const updatedBoxes = workspaceBoxes.map((box) => {
+    if (box.id !== boxId) return box;
+
+    const newContent = [...box.content];
+    const checklistItem = newContent[itemIndex];
+    const existingMaterials = checklistItem.materials || [];
+    const existingEntry = existingMaterials.find((mat) => mat.itemId === itemId);
+
+    let newMaterials;
+    if (existingEntry) {
+      newMaterials = existingMaterials.map((mat) =>
+        mat.itemId === itemId
+          ? { ...mat, quantity: mat.quantity + quantity }
+          : mat
+      );
+    } else {
+      newMaterials = [...existingMaterials, { itemId, quantity }];
+    }
+
+    newContent[itemIndex] = {
+      ...checklistItem,
+      materials: newMaterials,
+    };
+
+    return { ...box, content: newContent };
+  });
+
+  setWorkspaceBoxes(updatedBoxes);
+
+  setChecklistMaterialInputs((prev) => ({
+    ...prev,
+    [key]: { itemId: "", quantity: "1" },
+  }));
+}
+
+function removeMaterialFromChecklistItem(boxId, itemIndex, itemId) {
+  const updatedBoxes = workspaceBoxes.map((box) => {
+    if (box.id !== boxId) return box;
+
+    const newContent = [...box.content];
+    const checklistItem = newContent[itemIndex];
+
+    newContent[itemIndex] = {
+      ...checklistItem,
+      materials: (checklistItem.materials || []).filter(
+        (mat) => mat.itemId !== itemId
+      ),
+    };
+
+    return { ...box, content: newContent };
+  });
+
+  setWorkspaceBoxes(updatedBoxes);
+}
 
 
   return (
@@ -531,7 +632,7 @@ function App() {
 
             {view === "project" && selectedProject && (
               <div style={styles.card}>
-                <h2>Project Details</h2>
+                <h2>Project Settings</h2>
 
                 <label style={styles.label}>Project Name</label>
                 <input
@@ -549,134 +650,64 @@ function App() {
                   }
                 />
 
-                <label style={styles.label}>Project Notes</label>
-                <textarea
-                  style={styles.textarea}
-                  value={selectedProject.notes}
-                  onChange={(e) =>
-                    setProjects(
-                      projects.map((project) =>
-                        project.id === selectedProjectId
-                          ? { ...project, notes: e.target.value }
-                          : project
-                      )
-                    )
-                  }
-                />
-
-                <div style={styles.referenceBox}>
-                  <strong>Reference Frame:</strong>
-                  <p>{selectedProject.reference}</p>
-                </div>
-
-                <h3>Progress</h3>
-                <div style={styles.progressBarOuter}>
-                  <div
-                    style={{
-                      ...styles.progressBarInner,
-                      width: `${calculateProgress(selectedProject, [])}%`,
-                    }}
-                  ></div>
-                </div>
-                <p>{calculateProgress(selectedProject, [])}% complete</p>
-
-
-
                 <div style={styles.materialsSection}>
-
                   <div style={styles.materialBox}>
-                  <h3>Items Needed</h3>
-                  <div style={{ marginBottom: "12px" }}>
-                    <select
-                      style={styles.input}
-                      value={newMaterialItemId}
-                      onChange={(e) => setNewMaterialItemId(e.target.value)}
-                    >
-                      <option value="">Select item</option>
+                    <h3>Items Needed</h3>
+                    <div style={{ marginBottom: "12px" }}>
+                      <select
+                        style={styles.input}
+                        value={newMaterialItemId}
+                        onChange={(e) => setNewMaterialItemId(e.target.value)}
+                      >
+                        <option value="">Select item</option>
 
-                      {inventory.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.name}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      style={styles.input}
-                      type="number"
-                      placeholder="Quantity needed"
-                      value={newMaterialQty}
-                      onChange={(e) => setNewMaterialQty(e.target.value)}
-                    />
-                    <button style={styles.primaryButtonFull} onClick={addMaterial}>
-                      Add Material
-                    </button>
+                        {inventory.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.name}
+                          </option>
+                        ))}
+                      </select>
+
+                      <input
+                        style={styles.input}
+                        type="number"
+                        placeholder="Quantity needed"
+                        value={newMaterialQty}
+                        onChange={(e) => setNewMaterialQty(e.target.value)}
+                      />
+
+                      <button style={styles.primaryButtonFull} onClick={addMaterial}>
+                        Add Material
+                      </button>
+                    </div>
+
+                    {!selectedProject.materials || selectedProject.materials.length === 0 ? (
+                      <p style={styles.mutedText}>No materials added yet.</p>
+                    ) : (
+                      selectedProject.materials.map((mat) => {
+                        const item = inventory.find((i) => i.id === mat.itemId);
+                        if (!item) return null;
+
+                        return (
+                          <div key={mat.itemId} style={styles.itemRow}>
+                            <span>{item.name}</span>
+                            <div style={styles.actions}>
+                              <span style={styles.itemAmount}>
+                                {mat.needed} {item.unit}
+                              </span>
+                              <button
+                                style={styles.deleteButton}
+                                onClick={() => removeMaterial(mat.itemId)}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
                   </div>
-
-                  {!selectedProject.materials || selectedProject.materials.length === 0 ? (
-                    <p style={styles.mutedText}>No materials added yet.</p>
-                  ) : (
-                    selectedProject.materials.map((mat) => {
-                      const item = inventory.find((i) => i.id === mat.itemId);
-                      if (!item) return null;
-                      return (
-                        <div key={mat.itemId} style={styles.itemRow}>
-                          <span>{item.name}</span>
-                          <div style={styles.actions}>
-                            <span style={styles.itemAmount}>
-                              {mat.needed} {item.unit}
-                            </span>
-                            <button
-                              style={styles.deleteButton}
-                              onClick={() => removeMaterial(mat.itemId)}
-                            >
-                              Remove
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
                 </div>
-
-                <div style={styles.materialBox}>
-                  <h3>Items Used</h3>
-                  {!selectedProject.materials || selectedProject.materials.length === 0 ? (
-                    <p style={styles.mutedText}>No materials added yet.</p>
-                  ) : (
-                    selectedProject.materials.map((mat) => {
-                      const item = inventory.find((i) => i.id === mat.itemId);
-                      if (!item) return null;
-                      const available = item.quantity - mat.used;
-                      return (
-                        <div key={mat.itemId} style={styles.itemRow}>
-                          <div>
-                            <strong>{item.name}</strong>
-                            <p style={styles.mutedText}>
-                              Used: {mat.used} {item.unit} | Available: {available} {item.unit}
-                            </p>
-                          </div>
-
-                          <div style={styles.actions}>
-                            <button
-                              style={styles.smallButton}
-                              onClick={() => changeMaterialUsed(mat.itemId, -1)}
-                            >
-                              -
-                            </button>
-                            <span style={styles.qty}>{mat.used}</span>
-                            <button
-                              style={styles.smallButton}
-                              onClick={() => changeMaterialUsed(mat.itemId, 1)}
-                            >
-                              +
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
 
                 <div style={styles.deleteProjectRow}>
                   <button style={styles.deleteProjectButton} onClick={deleteProject}>
@@ -735,7 +766,7 @@ function App() {
                           color: newBoxColor, // NEW
                           content:
                             newBoxType === "checklist"
-                              ? [{ text: "New task", done: false }]
+                              ? [{ text: "New task", done: false, materials: [] }]
                               : newBoxType === "photo"
                               ? null
                               : "New Box"
@@ -792,21 +823,56 @@ function App() {
                         }}
                       >
                         {/* TAB HEADER */}
-                        <div
-                          style={{
-                            background: box.color || "#1f6feb",
-                            color: "white",
-                            padding: "6px 10px",
-                            borderTopLeftRadius: "4px",
-                            borderTopRightRadius: "4px",
-                            fontSize: "12px",
-                            fontWeight: "bold",
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center"
-                          }}
-                        >
-                          <span>{box.type.toUpperCase()}</span>
+                       <div
+                        style={{
+                          background: box.color || "#1f6feb",
+                          color: "white",
+                          padding: "6px 10px",
+                          borderTopLeftRadius: "4px",
+                          borderTopRightRadius: "4px",
+                          fontSize: "12px",
+                          fontWeight: "bold",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center"
+                        }}
+                      >
+                        <span>{box.type.toUpperCase()}</span>
+
+                        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                          {box.type === "checklist" && (
+                            <button
+                              onClick={() => {
+                                const updated = workspaceBoxes.map(b => {
+                                  if (b.id !== box.id) return b;
+
+                                  return {
+                                    ...b,
+                                    content: [
+                                      ...(b.content || []),
+                                      {
+                                        text: "",
+                                        done: false,
+                                        materials: []
+                                      }
+                                    ]
+                                  };
+                                });
+
+                                setWorkspaceBoxes(updated);
+                              }}
+                              style={{
+                                background: "transparent",
+                                border: "none",
+                                color: "white",
+                                cursor: "pointer",
+                                fontWeight: "bold",
+                                fontSize: "16px"
+                              }}
+                            >
+                              +
+                            </button>
+                          )}
 
                           <button
                             onClick={() => {
@@ -826,6 +892,7 @@ function App() {
                             ✕
                           </button>
                         </div>
+                      </div>
 
                         {/* CONTENT */}
                         <div style={{ padding: "10px", flex: 1 }}>
@@ -849,108 +916,130 @@ function App() {
                             />
                           )}
 
-                          {box.type === "checklist" && (
-                            <div>
-                              {box.content.map((item, i) => (
-                                <div key={i} style={{ display: "flex", gap: "6px" }}>
-                                  <input
-                                    type="checkbox"
-                                    checked={item.done}
-                                    onChange={() => {
-                                      const updated = workspaceBoxes.map(b => {
-                                        if (b.id !== box.id) return b;
-                                        const newContent = [...b.content];
-                                        newContent[i].done = !newContent[i].done;
-                                        return { ...b, content: newContent };
+                         {box.type === "checklist" && (
+                        <div>
+                          {box.content.map((item, i) => (
+                            <div
+                              key={i}
+                              style={{ display: "flex", gap: "6px", alignItems: "center" }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={item.done}
+                                onChange={() => {
+                                  const updated = workspaceBoxes.map((b) => {
+                                    if (b.id !== box.id) return b;
+                                    const newContent = [...b.content];
+                                    newContent[i].done = !newContent[i].done;
+                                    return { ...b, content: newContent };
+                                  });
+                                  setWorkspaceBoxes(updated);
+                                }}
+                              />
+
+                              <input
+                                type="text"
+                                value={item.text}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    const updated = workspaceBoxes.map((b) => {
+                                      if (b.id !== box.id) return b;
+
+                                      const newContent = [...b.content];
+                                      newContent.splice(i + 1, 0, {
+                                        text: "",
+                                        done: false,
+                                        materials: [],
                                       });
-                                      setWorkspaceBoxes(updated);
-                                    }}
-                                  />
 
-                                  <input
-                                    type="text"
-                                    value={item.text}
-                                    onKeyDown={(e) => {
-                                      if (e.key === "Enter") {
-                                        const updated = workspaceBoxes.map(b => {
-                                          if (b.id !== box.id) return b;
+                                      return { ...b, content: newContent };
+                                    });
 
-                                          const newContent = [...b.content];
-                                          newContent.splice(i + 1, 0, {
-                                            text: "",
-                                            done: false
-                                          });
+                                    setWorkspaceBoxes(updated);
+                                  }
+                                }}
+                                onChange={(e) => {
+                                  const updated = workspaceBoxes.map((b) => {
+                                    if (b.id !== box.id) return b;
+                                    const newContent = [...b.content];
+                                    newContent[i].text = e.target.value;
+                                    return { ...b, content: newContent };
+                                  });
+                                  setWorkspaceBoxes(updated);
+                                }}
+                                style={{ flex: 1, border: "none", outline: "none" }}
+                              />
 
-                                          return { ...b, content: newContent };
-                                        });
+                              <button
+                                style={styles.smallButton}
+                                onClick={() => {
+                                  const updated = workspaceBoxes.map((b) => {
+                                    if (b.id !== box.id) return b;
+                                    if (b.content.length <= 1) return b;
 
-                                        setWorkspaceBoxes(updated);
-                                      }
-                                    }}
-                                    onChange={(e) => {
-                                      const updated = workspaceBoxes.map(b => {
-                                        if (b.id !== box.id) return b;
-                                        const newContent = [...b.content];
-                                        newContent[i].text = e.target.value;
-                                        return { ...b, content: newContent };
-                                      });
-                                      setWorkspaceBoxes(updated);
-                                    }}
-                                    style={{ flex: 1, border: "none", outline: "none" }}
-                                  />
-                                </div>
-                              ))}
+                                    const newContent = [...b.content];
+                                    newContent.splice(i, 1);
+
+                                    return { ...b, content: newContent };
+                                  });
+
+                                  setWorkspaceBoxes(updated);
+                                }}
+                              >
+                                -
+                              </button>
                             </div>
-                          )}
-
-                          {box.type === "photo" && (
-                            <div>
-                              {/* Only show file input if no image has been selected yet */}
-                              {!box.content && (
-                                <input
-                                  type="file"
-                                  accept="image/*"
-                                  onChange={(e) => {
-                                    const file = e.target.files[0];
-                                    if (!file) return;
-
-                                    const reader = new FileReader();
-                                    reader.onload = () => {
-                                      const updated = workspaceBoxes.map((b) =>
-                                        b.id === box.id
-                                          ? { ...b, content: reader.result }
-                                          : b
-                                      );
-                                      setWorkspaceBoxes(updated);
-                                    };
-                                    reader.readAsDataURL(file);
-                                  }}
-                                />
-                              )}
-
-                              {box.content && (
-                                <img
-                                  src={box.content}
-                                  alt="uploaded"
-                                  style={{ width: "100%", marginTop: "10px" }}
-                                />
-                              )}
-                            </div>
-                          )}
-
+                          ))}
                         </div>
+                      )}
+
+                      {box.type === "photo" && (
+                        <div>
+                          {!box.content && (
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={(e) => {
+                                const file = e.target.files[0];
+                                if (!file) return;
+
+                                const reader = new FileReader();
+                                reader.onload = () => {
+                                  const updated = workspaceBoxes.map((b) =>
+                                    b.id === box.id
+                                      ? { ...b, content: reader.result }
+                                      : b
+                                  );
+                                  setWorkspaceBoxes(updated);
+                                };
+                                reader.readAsDataURL(file);
+                              }}
+                            />
+                          )}
+
+                          {box.content && (
+                            <img
+                              src={box.content}
+                              alt="uploaded"
+                              style={{ width: "100%", marginTop: "10px" }}
+                            />
+                          )}
+                        </div>
+                      )}
+
                       </div>
-                    </Rnd>
-                  ))}
-                </div>
-              </div>
-            )}
+                      </div>
+                      </Rnd>
+                      ))}
+                      </div>
+                      </div>
+                      )}
 
             {view === "newProject" && (
               // ISSUES SO FAR:
               // - Cannot affect the new project's tasks, materials, or references
               <div style={styles.card}>
-                <h2>New Project Details</h2>
+                <h2>New Project Settings</h2>
 
                 <label style={styles.label}>Project Name</label>
                 <input
