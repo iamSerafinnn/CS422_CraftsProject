@@ -937,6 +937,42 @@ function restoreChecklistMaterials(materials = []) {
                         <span>{box.type.toUpperCase()}</span>
 
                         <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                          {/* ADD TASK BUTTON */}
+                          {box.type === "checklist" && (
+                            <button
+                              onClick={() => {
+                                const updated = workspaceBoxes.map((b) => {
+                                  if (b.id !== box.id) return b;
+
+                                  return {
+                                    ...b,
+                                    content: [
+                                      ...b.content,
+                                      {
+                                        text: "New task",
+                                        done: false,
+                                        materials: [],
+                                        materialsConsumed: false
+                                      }
+                                    ]
+                                  };
+                                });
+
+                                setWorkspaceBoxes(updated);
+                              }}
+                              style={{
+                                background: "transparent",
+                                border: "none",
+                                color: "white",
+                                cursor: "pointer",
+                                fontWeight: "bold"
+                              }}
+                            >
+                              +
+                            </button>
+                          )}
+
+                          {/* DELETE BOX */}
                           <button
                             onClick={() => {
                               const confirmDelete = window.confirm("Delete this box?");
@@ -1054,20 +1090,41 @@ function restoreChecklistMaterials(materials = []) {
                                   }}
                                 />
 
-                                <input
-                                  type="text"
-                                  value={item.text}
-                                  onChange={(e) => {
+                              <input
+                                type="text"
+                                value={item.text}
+                                onChange={(e) => {
+                                  const updated = workspaceBoxes.map((b) => {
+                                    if (b.id !== box.id) return b;
+                                    const newContent = [...b.content];
+                                    newContent[i].text = e.target.value;
+                                    return { ...b, content: newContent };
+                                  });
+                                  setWorkspaceBoxes(updated);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+
                                     const updated = workspaceBoxes.map((b) => {
                                       if (b.id !== box.id) return b;
+
                                       const newContent = [...b.content];
-                                      newContent[i].text = e.target.value;
+                                      newContent.splice(i + 1, 0, {
+                                        text: "",
+                                        done: false,
+                                        materials: [],
+                                        materialsConsumed: false
+                                      });
+
                                       return { ...b, content: newContent };
                                     });
+
                                     setWorkspaceBoxes(updated);
-                                  }}
-                                  style={{ flex: 1, border: "none", outline: "none" }}
-                                />
+                                  }
+                                }}
+                                style={{ flex: 1, border: "none", outline: "none" }}
+                              />
 
                                 {/* Allocate button */}
                                 <button
@@ -1091,6 +1148,13 @@ function restoreChecklistMaterials(materials = []) {
                                       if (b.content.length <= 1) return b;
 
                                       const newContent = [...b.content];
+                                      const itemToDelete = newContent[i];
+
+                                      // 🔥 KEY FIX: restore materials if they were consumed
+                                      if (itemToDelete.materialsConsumed) {
+                                        restoreChecklistMaterials(itemToDelete.materials || []);
+                                      }
+
                                       newContent.splice(i, 1);
 
                                       return { ...b, content: newContent };
