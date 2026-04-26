@@ -68,7 +68,7 @@ const initialWorkspaces = {
       id: 201,
       x: 40,
       y: 40,
-      width: 260,
+      width: 300,
       height: 180,
       type: "checklist",
       color: "#1f6feb",
@@ -228,8 +228,18 @@ function App() {
   }
 
   function deleteItem(id) {
-    setInventory(inventory.filter((item) => item.id !== id));
-    localStorage.setItem('inventory', JSON.stringify(inventory));
+    const item = inventory.find((i) => i.id === id);
+    if (!item) return;
+  
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete "${item.name}" from inventory?`
+    );
+  
+    if (!confirmDelete) return;
+  
+    const updated = inventory.filter((i) => i.id !== id);
+    setInventory(updated);
+    localStorage.setItem("inventory", JSON.stringify(updated));
   }
 
   function startEditingItem(item) {
@@ -742,65 +752,7 @@ function restoreChecklistMaterials(materials = []) {
                   }
                 />
 
-                <div style={styles.materialsSection}>
-                  <div style={styles.materialBox}>
-                    <h3>Items Needed</h3>
-                    <div style={{ marginBottom: "12px" }}>
-                      <select
-                        style={styles.input}
-                        value={newMaterialItemId}
-                        onChange={(e) => setNewMaterialItemId(e.target.value)}
-                      >
-                        <option value="">Select item</option>
-
-                        {inventory.map((item) => (
-                          <option key={item.id} value={item.id}>
-                            {item.name}
-                          </option>
-                        ))}
-                      </select>
-
-                      <input
-                        style={styles.input}
-                        type="number"
-                        placeholder="Quantity needed"
-                        value={newMaterialQty}
-                        onChange={(e) => setNewMaterialQty(e.target.value)}
-                      />
-
-                      <button style={styles.primaryButtonFull} onClick={addMaterial}>
-                        Add Material
-                      </button>
-                    </div>
-
-                    {!selectedProject.materials || selectedProject.materials.length === 0 ? (
-                      <p style={styles.mutedText}>No materials added yet.</p>
-                    ) : (
-                      selectedProject.materials.map((mat) => {
-                        const item = inventory.find((i) => i.id === mat.itemId);
-                        if (!item) return null;
-
-                        return (
-                          <div key={mat.itemId} style={styles.itemRow}>
-                            <span>{item.name}</span>
-                            <div style={styles.actions}>
-                              <span style={styles.itemAmount}>
-                                {mat.needed} {item.unit}
-                              </span>
-                              <button
-                                style={styles.deleteButton}
-                                onClick={() => removeMaterial(mat.itemId)}
-                              >
-                                Remove
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
-
+                
                 <div style={styles.deleteProjectRow}>
                   <button style={styles.deleteProjectButton} onClick={deleteProject}>
                     Delete Project
@@ -978,7 +930,29 @@ function restoreChecklistMaterials(materials = []) {
                               const confirmDelete = window.confirm("Delete this box?");
                               if (!confirmDelete) return;
 
-                              setWorkspaceBoxes(workspaceBoxes.filter(b => b.id !== box.id));
+                              const boxToDelete = workspaceBoxes.find((b) => b.id === box.id);
+                              if (!boxToDelete) return;
+
+                              // Collect ALL materials in this box
+                              let allMaterials = [];
+
+                              if (boxToDelete.type === "checklist") {
+                                boxToDelete.content.forEach((item) => {
+                                  if (item.materials && item.materials.length > 0) {
+                                    allMaterials.push(...item.materials);
+                                  }
+                                });
+                              }
+
+                              // Restore inventory before deleting
+                              if (allMaterials.length > 0) {
+                                restoreChecklistMaterials(allMaterials);
+                              }
+
+                              // Remove the box
+                              setWorkspaceBoxes(
+                                workspaceBoxes.filter((b) => b.id !== box.id)
+                              );
                             }}
                             style={{
                               background: "transparent",
