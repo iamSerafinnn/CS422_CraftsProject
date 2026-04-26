@@ -149,8 +149,6 @@ function App() {
   const [newItemName, setNewItemName] = useState("");
   const [newItemQty, setNewItemQty] = useState("1");
   const [newItemUnit, setNewItemUnit] = useState("");
-  const [newMaterialItemId, setNewMaterialItemId] = useState("");
-  const [newMaterialQty, setNewMaterialQty] = useState("");
 
   const [editingItemId, setEditingItemId] = useState(null);
   const [editedItemName, setEditedItemName] = useState("");
@@ -318,79 +316,6 @@ function App() {
     }
   }
 
-  function changeMaterialUsed(itemId, delta) {
-    setProjects(
-      projects.map((project) => {
-        if (project.id !== selectedProjectId) return project;
-        return {
-          ...project,
-          materials: project.materials.map((mat) => {
-            if (mat.itemId !== itemId) return mat;
-
-            const inventoryItem = inventory.find((i) => i.id === itemId);
-            const maxUsed = inventoryItem ? inventoryItem.quantity : 0;
-            const newUsed = Math.max(0, Math.min(maxUsed, mat.used + delta));
-
-            return {
-              ...mat,
-              used: newUsed
-            };
-          })
-        };
-      })
-    )
-    localStorage.setItem('projects', JSON.stringify(projects));
-  };
-
-  function addMaterial() {
-    if (!newMaterialItemId || !newMaterialQty) return;
-    const itemId = Number(newMaterialItemId);
-    const qty = Number(newMaterialQty);
-    setProjects(
-      projects.map((project) => {
-        if (project.id !== selectedProjectId) return project;
-        const existing = (project.materials || []).find((mat) => mat.itemId === itemId);
-        if (existing) {
-          return {
-            ...project,
-            materials: project.materials.map((mat) =>
-              mat.itemId === itemId
-                ? { ...mat, needed: mat.needed + qty }
-                : mat
-            )
-          };
-        }
-        return {
-          ...project,
-          materials: [
-            ...(project.materials || []),
-            {
-              itemId,
-              needed: qty,
-              used: 0
-            }
-          ]
-        };
-      })
-    );
-    localStorage.setItem('projects', JSON.stringify(projects));
-    setNewMaterialItemId("");
-    setNewMaterialQty("");
-  }
-
-  function removeMaterial(itemId) {
-    setProjects(
-      projects.map((project) =>
-        project.id !== selectedProjectId
-          ? project
-          : {
-              ...project,
-              materials: (project.materials || []).filter((mat) => mat.itemId !== itemId)
-            }
-      )
-    );
-    localStorage.setItem('projects', JSON.stringify(projects));
-  }
   function getChecklistMaterialInput(boxId, itemIndex) {
   return checklistMaterialInputs[`${boxId}-${itemIndex}`] || {
     itemId: "",
@@ -933,20 +858,19 @@ function restoreChecklistMaterials(materials = []) {
                               const boxToDelete = workspaceBoxes.find((b) => b.id === box.id);
                               if (!boxToDelete) return;
 
-                              // Collect ALL materials in this box
-                              let allMaterials = [];
+                              let materialsToRestore = [];
 
                               if (boxToDelete.type === "checklist") {
                                 boxToDelete.content.forEach((item) => {
-                                  if (item.materials && item.materials.length > 0) {
-                                    allMaterials.push(...item.materials);
+                                  if (item.materialsConsumed && item.materials?.length) {
+                                    materialsToRestore.push(...item.materials);
                                   }
                                 });
                               }
 
-                              // Restore inventory before deleting
-                              if (allMaterials.length > 0) {
-                                restoreChecklistMaterials(allMaterials);
+                              // restore only actually consumed materials
+                              if (materialsToRestore.length > 0) {
+                                restoreChecklistMaterials(materialsToRestore);
                               }
 
                               // Remove the box
