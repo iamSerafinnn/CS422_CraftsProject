@@ -41,9 +41,24 @@ const initialWorkspaces = {
       type: "checklist",
       color: "#1f6feb",
       content: [
-        { text: "Cut rose fabric", done: true, materials: [] },
-        { text: "Pin pattern pieces", done: true, materials: [] },
-        { text: "Sew initial seams", done: false, materials: [] },
+        { 
+          text: "Cut rose fabric",
+          done: true,
+          materials: [],
+          materialsConsumed: false
+        },
+        { 
+          text: "Pin pattern pieces",
+          done: true,
+          materials: [],
+          materialsConsumed: false
+        },
+        { 
+          text: "Sew initial seams",
+          done: false,
+          materials: [],
+          materialsConsumed: false
+        },
       ],
     },
   ],
@@ -58,9 +73,24 @@ const initialWorkspaces = {
       type: "checklist",
       color: "#1f6feb",
       content: [
-        { text: "Measure carpet base", done: true, materials: [] },
-        { text: "Align rose pattern tiles", done: false, materials: [] },
-        { text: "Stitch sections", done: false, materials: [] },
+        { 
+          text: "Measure carpet base",
+          done: true,
+          materials: [],
+          materialsConsumed: false
+        },
+        { 
+          text: "Align rose pattern tiles",
+          done: false,
+          materials: [],
+          materialsConsumed: false
+        },
+        { 
+          text: "Stitch sections",
+          done: false,
+          materials: [],
+          materialsConsumed: false
+        },
       ],
     },
   ],
@@ -136,6 +166,12 @@ function App() {
   const [newBoxType, setNewBoxType] = useState("text");
   const [newBoxColor, setNewBoxColor] = useState("#1f6feb"); // default blue
   const [checklistMaterialInputs, setChecklistMaterialInputs] = useState({});
+
+  const [materialModal, setMaterialModal] = useState({
+    open: false,
+    boxId: null,
+    itemIndex: null,
+  });
 
   const filteredInventory = useMemo(() => {
     return inventory.filter((item) =>
@@ -402,10 +438,18 @@ function addMaterialToChecklistItem(boxId, itemIndex) {
       newMaterials = [...existingMaterials, { itemId, quantity }];
     }
 
-    newContent[itemIndex] = {
+    const updatedItem = {
       ...checklistItem,
       materials: newMaterials,
     };
+    
+    if (checklistItem.done) {
+      consumeChecklistMaterials([{ itemId, quantity }]);
+    
+      updatedItem.materialsConsumed = true;
+    }
+    
+    newContent[itemIndex] = updatedItem;
 
     return { ...box, content: newContent };
   });
@@ -438,6 +482,56 @@ function removeMaterialFromChecklistItem(boxId, itemIndex, itemId) {
   setWorkspaceBoxes(updatedBoxes);
 }
 
+function consumeChecklistMaterials(materials = []) {
+  setInventory((prevInventory) => {
+    const updatedInventory = prevInventory.map((item) => {
+      const matchedMaterial = materials.find(
+        (mat) => mat.itemId === item.id
+      );
+
+      if (!matchedMaterial) return item;
+
+      return {
+        ...item,
+        quantity: Math.max(
+          0,
+          item.quantity - matchedMaterial.quantity
+        ),
+      };
+    });
+
+    localStorage.setItem(
+      "inventory",
+      JSON.stringify(updatedInventory)
+    );
+
+    return updatedInventory;
+  });
+}
+
+function restoreChecklistMaterials(materials = []) {
+  setInventory((prevInventory) => {
+    const updatedInventory = prevInventory.map((item) => {
+      const matchedMaterial = materials.find(
+        (mat) => mat.itemId === item.id
+      );
+
+      if (!matchedMaterial) return item;
+
+      return {
+        ...item,
+        quantity: item.quantity + matchedMaterial.quantity,
+      };
+    });
+
+    localStorage.setItem(
+      "inventory",
+      JSON.stringify(updatedInventory)
+    );
+
+    return updatedInventory;
+  });
+}
 
   return (
     <div style={styles.page}>
@@ -495,8 +589,6 @@ function removeMaterialFromChecklistItem(boxId, itemIndex, itemId) {
                     <p>No items found.</p>
                   ) : (
                     filteredInventory.map((item) => {
-                      const used = usedAcrossProjects[item.id] || 0;
-                      const available = item.quantity - used;
                       return (
                         <div key={item.id} style={styles.listItem}>
                           <div style={{ flex: 1, minWidth: "220px" }}>
@@ -539,7 +631,7 @@ function removeMaterialFromChecklistItem(boxId, itemIndex, itemId) {
                             )}
                       
                             <p style={styles.mutedText}>
-                              Total: {item.quantity} {item.unit} | Used: {used} | Available: {available}
+                              Total: {item.quantity} {item.unit}
                             </p>
                           </div>
                       
@@ -760,13 +852,18 @@ function removeMaterialFromChecklistItem(boxId, itemIndex, itemId) {
                           id: Date.now(),
                           x: 50,
                           y: 50,
-                          width: 250,
-                          height: 180,
+                          width: 320,
+                          height: 260,
                           type: newBoxType,
                           color: newBoxColor, // NEW
                           content:
                             newBoxType === "checklist"
-                              ? [{ text: "New task", done: false, materials: [] }]
+                              ? [{
+                                  text: "New task",
+                                  done: false,
+                                  materials: [],
+                                  materialsConsumed: false
+                                }]
                               : newBoxType === "photo"
                               ? null
                               : "New Box"
@@ -840,40 +937,6 @@ function removeMaterialFromChecklistItem(boxId, itemIndex, itemId) {
                         <span>{box.type.toUpperCase()}</span>
 
                         <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                          {box.type === "checklist" && (
-                            <button
-                              onClick={() => {
-                                const updated = workspaceBoxes.map(b => {
-                                  if (b.id !== box.id) return b;
-
-                                  return {
-                                    ...b,
-                                    content: [
-                                      ...(b.content || []),
-                                      {
-                                        text: "",
-                                        done: false,
-                                        materials: []
-                                      }
-                                    ]
-                                  };
-                                });
-
-                                setWorkspaceBoxes(updated);
-                              }}
-                              style={{
-                                background: "transparent",
-                                border: "none",
-                                color: "white",
-                                cursor: "pointer",
-                                fontWeight: "bold",
-                                fontSize: "16px"
-                              }}
-                            >
-                              +
-                            </button>
-                          )}
-
                           <button
                             onClick={() => {
                               const confirmDelete = window.confirm("Delete this box?");
@@ -895,7 +958,7 @@ function removeMaterialFromChecklistItem(boxId, itemIndex, itemId) {
                       </div>
 
                         {/* CONTENT */}
-                        <div style={{ padding: "10px", flex: 1 }}>
+                        <div style={{ padding: "10px", flex: 1, overflowY: "auto" }}>
                           
                           {box.type === "text" && (
                             <textarea
@@ -915,84 +978,6 @@ function removeMaterialFromChecklistItem(boxId, itemIndex, itemId) {
                               }}
                             />
                           )}
-
-                         {box.type === "checklist" && (
-                        <div>
-                          {box.content.map((item, i) => (
-                            <div
-                              key={i}
-                              style={{ display: "flex", gap: "6px", alignItems: "center" }}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={item.done}
-                                onChange={() => {
-                                  const updated = workspaceBoxes.map((b) => {
-                                    if (b.id !== box.id) return b;
-                                    const newContent = [...b.content];
-                                    newContent[i].done = !newContent[i].done;
-                                    return { ...b, content: newContent };
-                                  });
-                                  setWorkspaceBoxes(updated);
-                                }}
-                              />
-
-                              <input
-                                type="text"
-                                value={item.text}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") {
-                                    const updated = workspaceBoxes.map((b) => {
-                                      if (b.id !== box.id) return b;
-
-                                      const newContent = [...b.content];
-                                      newContent.splice(i + 1, 0, {
-                                        text: "",
-                                        done: false,
-                                        materials: [],
-                                      });
-
-                                      return { ...b, content: newContent };
-                                    });
-
-                                    setWorkspaceBoxes(updated);
-                                  }
-                                }}
-                                onChange={(e) => {
-                                  const updated = workspaceBoxes.map((b) => {
-                                    if (b.id !== box.id) return b;
-                                    const newContent = [...b.content];
-                                    newContent[i].text = e.target.value;
-                                    return { ...b, content: newContent };
-                                  });
-                                  setWorkspaceBoxes(updated);
-                                }}
-                                style={{ flex: 1, border: "none", outline: "none" }}
-                              />
-
-                              <button
-                                style={styles.smallButton}
-                                onClick={() => {
-                                  const updated = workspaceBoxes.map((b) => {
-                                    if (b.id !== box.id) return b;
-                                    if (b.content.length <= 1) return b;
-
-                                    const newContent = [...b.content];
-                                    newContent.splice(i, 1);
-
-                                    return { ...b, content: newContent };
-                                  });
-
-                                  setWorkspaceBoxes(updated);
-                                }}
-                              >
-                                -
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
                       {box.type === "photo" && (
                         <div>
                           {!box.content && (
@@ -1024,6 +1009,125 @@ function removeMaterialFromChecklistItem(boxId, itemIndex, itemId) {
                               style={{ width: "100%", marginTop: "10px" }}
                             />
                           )}
+                        </div>
+                      )}
+                      {box.type === "checklist" && (
+                        <div>
+                          {box.content.map((item, i) => (
+                            <div key={i} style={{ marginBottom: "8px" }}>
+                              
+                              {/* ROW */}
+                              <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                                <input
+                                  type="checkbox"
+                                  checked={item.done}
+                                  onChange={() => {
+                                    const updated = workspaceBoxes.map((b) => {
+                                      if (b.id !== box.id) return b;
+
+                                      const newContent = [...b.content];
+                                      const checklistItem = { ...newContent[i] };
+
+                                      const becomingDone = !checklistItem.done;
+
+                                      if (becomingDone) {
+                                        // Always consume ALL materials currently attached
+                                        consumeChecklistMaterials(checklistItem.materials || []);
+                                        checklistItem.materialsConsumed = true;
+                                      
+                                      } else {
+                                        // Always restore ALL materials
+                                        restoreChecklistMaterials(checklistItem.materials || []);
+                                        checklistItem.materialsConsumed = false;
+                                      }
+
+                                      checklistItem.done = becomingDone;
+                                      newContent[i] = checklistItem;
+
+                                      return {
+                                        ...b,
+                                        content: newContent,
+                                      };
+                                    });
+
+                                    setWorkspaceBoxes(updated);
+                                  }}
+                                />
+
+                                <input
+                                  type="text"
+                                  value={item.text}
+                                  onChange={(e) => {
+                                    const updated = workspaceBoxes.map((b) => {
+                                      if (b.id !== box.id) return b;
+                                      const newContent = [...b.content];
+                                      newContent[i].text = e.target.value;
+                                      return { ...b, content: newContent };
+                                    });
+                                    setWorkspaceBoxes(updated);
+                                  }}
+                                  style={{ flex: 1, border: "none", outline: "none" }}
+                                />
+
+                                {/* Allocate button */}
+                                <button
+                                  style={styles.smallButton}
+                                  onClick={() =>
+                                    setMaterialModal({
+                                      open: true,
+                                      boxId: box.id,
+                                      itemIndex: i,
+                                    })
+                                  }
+                                >
+                                  📦
+                                </button>
+
+                                <button
+                                  style={styles.smallButton}
+                                  onClick={() => {
+                                    const updated = workspaceBoxes.map((b) => {
+                                      if (b.id !== box.id) return b;
+                                      if (b.content.length <= 1) return b;
+
+                                      const newContent = [...b.content];
+                                      newContent.splice(i, 1);
+
+                                      return { ...b, content: newContent };
+                                    });
+
+                                    setWorkspaceBoxes(updated);
+                                  }}
+                                >
+                                  -
+                                </button>
+                              </div>
+
+                              {/* MATERIAL DISPLAY */}
+                              {item.materials && item.materials.length > 0 && (
+                                <div style={{ marginLeft: "24px", fontSize: "12px" }}>
+                                  {item.materials.map((mat) => {
+                                    const inv = inventory.find((invItem) => invItem.id === mat.itemId);
+                                    if (!inv) return null;
+
+                                    return (
+                                      <div key={mat.itemId} style={{ display: "flex", gap: "6px" }}>
+                                        <span>{inv.name}: {mat.quantity}</span>
+                                        <button
+                                          style={styles.tinyButton}
+                                          onClick={() =>
+                                            removeMaterialFromChecklistItem(box.id, i, mat.itemId)
+                                          }
+                                        >
+                                          x
+                                        </button>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          ))}
                         </div>
                       )}
 
@@ -1127,13 +1231,12 @@ function removeMaterialFromChecklistItem(boxId, itemIndex, itemId) {
                     newProjectMaterials.map((mat) => {
                       const item = inventory.find((i) => i.id === mat.itemId);
                       if (!item) return null;
-                      const available = item.quantity - mat.used;
                       return (
                         <div key={mat.itemId} style={styles.itemRow}>
                           <div>
                             <strong>{item.name}</strong>
                             <p style={styles.mutedText}>
-                              Used: {mat.used} {item.unit} | Available: {available} {item.unit}
+                              Total: {item.quantity} {item.unit}
                             </p>
                           </div>
 
@@ -1200,6 +1303,83 @@ function removeMaterialFromChecklistItem(boxId, itemIndex, itemId) {
           </div>
         </div>
       </div>
+        {materialModal.open && (
+          <div style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0,0,0,0.4)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 999
+          }}>
+            <div style={{
+              background: "white",
+              padding: "20px",
+              borderRadius: "12px",
+              width: "300px"
+            }}>
+              <h3>Allocate Materials</h3>
+
+              <select
+                style={styles.input}
+                value={getChecklistMaterialInput(materialModal.boxId, materialModal.itemIndex).itemId}
+                onChange={(e) =>
+                  setChecklistMaterialInput(
+                    materialModal.boxId,
+                    materialModal.itemIndex,
+                    "itemId",
+                    e.target.value
+                  )
+                }
+              >
+                <option value="">Select item</option>
+                {inventory.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+
+              <input
+                style={styles.input}
+                type="number"
+                placeholder="Quantity"
+                value={getChecklistMaterialInput(materialModal.boxId, materialModal.itemIndex).quantity}
+                onChange={(e) =>
+                  setChecklistMaterialInput(
+                    materialModal.boxId,
+                    materialModal.itemIndex,
+                    "quantity",
+                    e.target.value
+                  )
+                }
+              />
+
+              <button
+                style={styles.primaryButtonFull}
+                onClick={() =>
+                  addMaterialToChecklistItem(
+                    materialModal.boxId,
+                    materialModal.itemIndex
+                  )
+                }
+              >
+                Add Allocation
+              </button>
+
+              <button
+                style={{ ...styles.deleteButton, marginTop: "10px" }}
+                onClick={() => setMaterialModal({ open: false })}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
     </div>
   );
 }
@@ -1214,6 +1394,14 @@ const styles = {
   background: "transparent",
   cursor: "pointer",
   fontSize: "18px"
+  },
+  tinyButton: {
+    padding: "2px 6px",
+    fontSize: "10px",
+    borderRadius: "6px",
+    border: "1px solid #ccc",
+    cursor: "pointer",
+    lineHeight: "1",
   },
   scrollBox: {
     maxHeight: "454px",
