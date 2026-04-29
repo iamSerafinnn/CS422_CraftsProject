@@ -171,6 +171,11 @@ function App() {
     itemIndex: null,
   });
 
+  const [renamingProjectId, setRenamingProjectId] = useState(null);
+  const [renamingProjectName, setRenamingProjectName] = useState("");
+  const [renamingBoxId, setRenamingBoxId] = useState(null);
+  const [renamingBoxName, setRenamingBoxName] = useState("");
+
   const filteredInventory = useMemo(() => {
     return inventory.filter((item) =>
       item.name.toLowerCase().includes(search.toLowerCase())
@@ -284,37 +289,54 @@ function App() {
     setView("projects");
   }
 
-  function startAddProject() {
-    setSearch("");
-    setView("newProject");
+function startAddProject() {
+  setSearch("");
+  setView("newProject");
+}
+
+function deleteProject() {
+  if (!selectedProject) return;
+
+  const confirmDelete = window.confirm(
+    `Are you sure you want to delete "${selectedProject.name}"?`
+  );
+
+  if (!confirmDelete) return;
+
+  const boxes = projectWorkspaces[selectedProjectId] || [];
+
+  if (calculateProgress(selectedProject, boxes) < 100) {
+    boxes
+      .filter(box => box.type === "checklist")
+      .forEach(box => {
+        box.content.forEach(item => {
+          if (item.materialsConsumed && item.materials?.length) {
+            restoreChecklistMaterials(item.materials);
+          }
+        });
+      });
   }
 
-  function deleteProject() {
-    if (!selectedProject) return;
-  
-    const confirmDelete = window.confirm(
-      `Are you sure you want to delete "${selectedProject.name}"?`
-    );
-  
-    if (!confirmDelete) return;
-  
-    const updatedProjects = projects.filter(
-      (project) => project.id !== selectedProjectId
-    );
-  
-    setProjects(updatedProjects);
-    localStorage.setItem('projects', JSON.stringify(updatedProjects));
-  
-    if (updatedProjects.length > 0) {
-      setSelectedProjectId(updatedProjects[0].id);
-      setSearch("");
-      setView("projects");
-    } else {
-      setSelectedProjectId(null);
-      setSearch("");
-      setView("projects");
-    }
+  setProjectWorkspaces(prev => {
+    const updated = { ...prev };
+    delete updated[selectedProjectId];
+    return updated;
+  });
+
+  const updatedProjects = projects.filter(
+    project => project.id !== selectedProjectId
+  );
+  setProjects(updatedProjects);
+  localStorage.setItem('projects', JSON.stringify(updatedProjects));
+
+  if (updatedProjects.length > 0) {
+    setSelectedProjectId(updatedProjects[0].id);
+  } else {
+    setSelectedProjectId(null);
   }
+  setSearch("");
+  setView("projects");
+}
 
   function getChecklistMaterialInput(boxId, itemIndex) {
   return checklistMaterialInputs[`${boxId}-${itemIndex}`] || {
@@ -468,6 +490,13 @@ function restoreChecklistMaterials(materials = []) {
   });
 }
 
+function saveRename(id, name, setter, setItems) {
+  const trimmed = name.trim();
+  if (!trimmed) return;
+  setItems(prev => prev.map(item => item.id === id ? { ...item, name: trimmed } : item));
+  setter(null);
+}
+
   return (
     <div style={styles.page}>
       <div style={styles.container}>
@@ -527,43 +556,29 @@ function restoreChecklistMaterials(materials = []) {
                       return (
                         <div key={item.id} style={styles.listItem}>
                           <div style={{ flex: 1, minWidth: "220px" }}>
-                            {editingItemId === item.id ? (
-                              <div style={styles.editRow}>
+                            <div style={styles.nameRow}>
+                              {editingItemId === item.id ? (
                                 <input
+                                  autoFocus
                                   style={styles.inlineInput}
-                                  type="text"
                                   value={editedItemName}
                                   onChange={(e) => setEditedItemName(e.target.value)}
+                                  onBlur={() => saveEditedItemName(item.id)}
                                   onKeyDown={(e) => {
-                                    if (e.key === "Enter") {
-                                      saveEditedItemName(item.id);
-                                    }
+                                    if (e.key === "Enter") saveEditedItemName(item.id);
+                                    if (e.key === "Escape") cancelEditingItem();
                                   }}
                                 />
-                                <button
-                                  style={styles.saveButton}
-                                  onClick={() => saveEditedItemName(item.id)}
+                              ) : (
+                                <strong
+                                  onDoubleClick={() => startEditingItem(item)}
+                                  title="Double-click to rename"
+                                  style={{ cursor: "text" }}
                                 >
-                                  Save
-                                </button>
-                                <button
-                                  style={styles.smallButton}
-                                  onClick={cancelEditingItem}
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            ) : (
-                              <div style={styles.nameRow}>
-                                <strong>{item.name}</strong>
-                                <button
-                                  style={styles.editButton}
-                                  onClick={() => startEditingItem(item)}
-                                >
-                                  Edit
-                                </button>
-                              </div>
-                            )}
+                                  {item.name}
+                                </strong>
+                              )}
+                            </div>
                       
                             <p style={styles.mutedText}>
                               Total: {item.quantity} {item.unit}
@@ -627,7 +642,32 @@ function restoreChecklistMaterials(materials = []) {
                         }}
                       >
                         <div style={{ display: "flex", justifyContent: "space-between" }}>
-                          <h3>{project.name}</h3>
+                          {renamingProjectId === project.id ? (
+                            <input
+                              autoFocus
+                              style={{ ...styles.inlineInput, fontSize: "16px", fontWeight: "bold" }}
+                              value={renamingProjectName}
+                              onChange={(e) => setRenamingProjectName(e.target.value)}
+                              onBlur={() => saveRename(project.id, renamingProjectName, setRenamingProjectId, setProjects)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") saveRename(project.id, renamingProjectName, setRenamingProjectId, setProjects);
+                                if (e.key === "Escape") setRenamingProjectId(null);
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          ) : (
+                            <h3
+                              onDoubleClick={(e) => {
+                                e.stopPropagation();
+                                setRenamingProjectId(project.id);
+                                setRenamingProjectName(project.name);
+                              }}
+                              title="Double-click to rename"
+                              style={{ cursor: "text", margin: 0 }}
+                            >
+                              {project.name}
+                            </h3>
+                          )}
 
                           <button
                             style={styles.settingsButton}
@@ -811,7 +851,51 @@ function restoreChecklistMaterials(materials = []) {
                           alignItems: "center"
                         }}
                       >
-                        <span>{box.type.toUpperCase()}</span>
+                        {renamingBoxId === box.id ? (
+                          <input
+                            autoFocus
+                            value={renamingBoxName}
+                            onChange={(e) => setRenamingBoxName(e.target.value.toUpperCase())}
+                            onBlur={() => saveRename(box.id, renamingBoxName, setRenamingBoxId, (updater) => {
+                              setProjectWorkspaces(prev => ({
+                                ...prev,
+                                [selectedProjectId]: updater(prev[selectedProjectId] || [])
+                              }));
+                            })}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") saveRename(box.id, renamingBoxName, setRenamingBoxId, (updater) => {
+                                setProjectWorkspaces(prev => ({
+                                  ...prev,
+                                  [selectedProjectId]: updater(prev[selectedProjectId] || [])
+                                }));
+                              });
+                              if (e.key === "Escape") setRenamingBoxId(null);
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                              background: "transparent",
+                              border: "none",
+                              borderBottom: "1px solid white",
+                              color: "white",
+                              fontWeight: "bold",
+                              fontSize: "12px",
+                              outline: "none",
+                              width: "120px",
+                            }}
+                          />
+                        ) : (
+                          <span
+                            onDoubleClick={(e) => {
+                              e.stopPropagation();
+                              setRenamingBoxId(box.id);
+                              setRenamingBoxName(box.name || box.type.toUpperCase());
+                            }}
+                            title="Double-click to rename"
+                            style={{ cursor: "text" }}
+                          >
+                            {box.name || box.type.toUpperCase()}
+                          </span>
+                        )}
 
                         <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                           {/* ADD TASK BUTTON */}
